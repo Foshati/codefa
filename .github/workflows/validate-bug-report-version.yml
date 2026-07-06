@@ -1,0 +1,80 @@
+name: Validate bug report version
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: bug-report-version-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  issues: write
+
+jobs:
+  validate:
+    if: contains(github.event.issue.labels.*.name, 'bug')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate CODEFA version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const fieldPattern = "^### CODEFA version\\r?\\n+\\s*([^\\r\\n]+)";
+            const versionPattern = "^(?:(?:codefa )?\\d+\\.\\d+\\.\\d+|None)$";
+            const match = (issue.body || "").match(new RegExp(fieldPattern, "m"));
+            const version = match?.[1]?.trim() || "";
+            const valid = new RegExp(versionPattern).test(version);
+            const labelName = "needs-codefa-version";
+            const marker = "<!-- codefa-version-validator -->";
+            const labels = new Set(issue.labels.map((label) => label.name));
+            const repo = context.repo;
+            const issue_number = issue.number;
+
+            if (valid) {
+              if (labels.has(labelName)) {
+                await github.rest.issues.removeLabel({
+                  ...repo,
+                  issue_number,
+                  name: labelName,
+                });
+              }
+              return;
+            }
+
+            if (!labels.has(labelName)) {
+              try {
+                await github.rest.issues.getLabel({ ...repo, name: labelName });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                try {
+                  await github.rest.issues.createLabel({
+                    ...repo,
+                    name: labelName,
+                    color: "d4c5f9",
+                    description: "CODEFA version must be number.number.number or None",
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
+                }
+              }
+              await github.rest.issues.addLabels({
+                ...repo,
+                issue_number,
+                labels: [labelName],
+              });
+            }
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { ...repo, issue_number, per_page: 100 },
+            );
+            if (!comments.some((comment) => comment.body?.includes(marker))) {
+              await github.rest.issues.createComment({
+                ...repo,
+                issue_number,
+                body: `${marker}\nPlease edit **CODEFA version** to contain only an exact \`number.number.number\` value, such as \`4.6.1\`, or \`None\`. Run \`codefa-server --version\` to find the installed version.`,
+              });
+            }

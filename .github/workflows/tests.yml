@@ -1,0 +1,78 @@
+# Branch protection: require every status check this workflow reports, for example:
+#   Ban suppressions and legacy annotations
+#   ruff-format, ruff-check, ty, pytest
+# GitHub may prefix with the workflow name (e.g. "CI / ruff-format"); use the names the branch protection UI offers after a run.
+
+name: CI
+
+env:
+  UV_MALWARE_CHECK: "1"
+  UV_PREVIEW_FEATURES: "malware-check"
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-suppressions-or-legacy-annotations:
+    name: Ban suppressions and legacy annotations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 1
+
+      - name: "Fail on type ignores and legacy future annotations"
+        run: |
+          if grep -rE '# type: ignore|# ty: ignore|from __future__ import annotations' --include='*.py' . --exclude-dir=.venv --exclude-dir=.git; then
+            echo "::error::type: ignore / ty: ignore comments and legacy future annotations are not allowed. Fix the underlying type/import issue instead."
+            exit 1
+          fi
+          exit 0
+
+  quality:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: ruff-format
+            run: uv run ruff format --check
+          - id: ruff-check
+            run: uv run ruff check
+          - id: ty
+            run: uv run ty check
+          - id: pytest
+            run: uv run pytest -v --tb=short
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-python: true
+
+      - name: Run
+        run: ${{ matrix.run }}
