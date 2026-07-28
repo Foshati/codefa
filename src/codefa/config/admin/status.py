@@ -1,0 +1,80 @@
+"""Provider configuration status for the Admin UI."""
+
+from collections.abc import Mapping
+from typing import Any
+
+from codefa.config.provider_catalog import PROVIDER_CATALOG
+
+from .manifest import FIELDS
+
+
+def provider_config_status(
+    state: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return provider configuration status without making network calls."""
+    statuses: list[dict[str, Any]] = []
+    for provider_id, descriptor in PROVIDER_CATALOG.items():
+        if descriptor.local:
+            base_url = ""
+            if descriptor.base_url_attr is not None:
+                base_url = _value_for_settings_attr(state, descriptor.base_url_attr)
+            statuses.append(
+                {
+                    "provider_id": provider_id,
+                    "display_name": descriptor.display_name,
+                    "kind": "local",
+                    "status": "missing_url" if not base_url.strip() else "unknown",
+                    "label": "Missing URL" if not base_url.strip() else "Not checked",
+                    "base_url": base_url or descriptor.default_base_url or "",
+                }
+            )
+            continue
+
+        configured = all(
+            _value_for_settings_attr(state, attr).strip()
+            for attr in descriptor.configuration_attrs()
+        )
+        configuration = " + ".join(
+            _field_key_for_settings_attr(attr)
+            for attr in descriptor.configuration_attrs()
+        )
+        missing_key = descriptor.credential_env is not None
+        statuses.append(
+            {
+                "provider_id": provider_id,
+                "display_name": descriptor.display_name,
+                "kind": "remote",
+                "status": (
+                    "configured"
+                    if configured
+                    else "missing_key"
+                    if missing_key
+                    else "missing_config"
+                ),
+                "label": (
+                    "Configured"
+                    if configured
+                    else "Missing key"
+                    if missing_key
+                    else "Missing configuration"
+                ),
+                "configuration": configuration,
+            }
+        )
+    return statuses
+
+
+def _value_for_settings_attr(
+    state: Mapping[str, Mapping[str, Any]], settings_attr: str
+) -> str:
+    for field in FIELDS:
+        if field.settings_attr == settings_attr:
+            return str(state.get(field.key, {}).get("value", field.default))
+    return ""
+
+
+def _field_key_for_settings_attr(settings_attr: str) -> str:
+    for field in FIELDS:
+        if field.settings_attr == settings_attr:
+            return field.key
+    raise AssertionError(f"No admin field owns settings attribute {settings_attr!r}")
