@@ -109,6 +109,25 @@ print_command() {
     printf '\n'
 }
 
+run_quiet() {
+    if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
+        print_command "$@"
+    fi
+    if [ "$dry_run" -eq 1 ]; then
+        return 0
+    fi
+
+    if [ "${verbose:-0}" -eq 1 ]; then
+        "$@"
+    else
+        "$@" >/dev/null 2>&1
+    fi
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        fail "Command failed with exit code $status: $1"
+    fi
+}
+
 run() {
     if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
         print_command "$@"
@@ -343,7 +362,7 @@ ensure_claude() {
     fi
 
     if prompt_confirm "Install Claude Code (Anthropic CLI)?"; then
-        download_and_run "$CLAUDE_INSTALL_URL" bash "Claude Code"
+        run_with_spinner "Installing Claude Code" download_and_run "$CLAUDE_INSTALL_URL" bash "Claude Code"
         add_known_bin_directories
         verify_command claude "Claude Code"
         ver=$(get_command_version claude)
@@ -370,7 +389,7 @@ ensure_codex() {
     fi
 
     if prompt_confirm "Install Codex CLI (OpenAI CLI)?"; then
-        download_and_run "$CODEX_INSTALL_URL" sh "Codex" 1
+        run_with_spinner "Installing Codex CLI" download_and_run "$CODEX_INSTALL_URL" sh "Codex" 1
         add_known_bin_directories
         verify_command codex "Codex"
         ver=$(get_command_version codex)
@@ -573,7 +592,7 @@ install_codefa() {
 }
 
 configure_and_verify_codefa() {
-    run uv tool update-shell
+    run_quiet uv tool update-shell
 
     if [ "$dry_run" -eq 1 ]; then
         print_command uv tool dir --bin
@@ -583,8 +602,7 @@ configure_and_verify_codefa() {
         return 0
     fi
 
-    print_command uv tool dir --bin
-    if tool_bin=$(uv tool dir --bin); then
+    if tool_bin=$(uv tool dir --bin 2>/dev/null); then
         :
     else
         status=$?
@@ -600,7 +618,7 @@ configure_and_verify_codefa() {
         [ -x "$tool_bin/$command_name" ] || fail "codefa installation did not create $tool_bin/$command_name."
     done
 
-    run "$tool_bin/codefa-server" --version
+    run_quiet "$tool_bin/codefa-server" --version
     step "Configured PATH and verified codefa binaries"
 }
 
