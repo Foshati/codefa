@@ -336,19 +336,24 @@ function Ensure-Codex {
 }
 
 function Ensure-Pi {
-    $existingPi = Get-ApplicationCommand "pi"
-    if ($existingPi -and ($DryRun -or (Test-PiApplication $existingPi))) {
-        Write-Host "Pi already found on PATH; verifying it."
-    }
-    else {
-        if ($existingPi) {
-            Write-Host "The existing 'pi' command at '$($existingPi.Source)' is not Pi Coding Agent; installing Pi."
+    try {
+        $existingPi = Get-ApplicationCommand "pi"
+        if ($existingPi -and ($DryRun -or (Test-PiApplication $existingPi))) {
+            Write-Host "Pi already found on PATH; verifying it."
+            Confirm-PiApplication
         }
-        Invoke-DownloadedPowerShellInstaller -Url $PiInstallUrl -Name "Pi"
-        Add-PiBinDirectories
+        else {
+            if ($existingPi) {
+                Write-Host "The existing 'pi' command at '$($existingPi.Source)' is not Pi Coding Agent; installing Pi."
+            }
+            Invoke-DownloadedPowerShellInstaller -Url $PiInstallUrl -Name "Pi"
+            Add-PiBinDirectories
+            Confirm-PiApplication
+        }
     }
-
-    Confirm-PiApplication
+    catch {
+        Write-Host "warning: Pi agent installation skipped ($($_.Exception.Message)). Continuing codefa setup..."
+    }
 }
 
 function Convert-UvVersionOutput {
