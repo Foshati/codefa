@@ -10,6 +10,7 @@ CODEX_INSTALL_URL="https://chatgpt.com/codex/install.sh"
 UV_INSTALL_URL="https://astral.sh/uv/install.sh"
 CODEFA_COMMANDS="codefa-server codefa-claude codefax codefa-init codefa"
 
+auto_yes=0
 dry_run=0
 voice_nim=0
 voice_local=0
@@ -24,6 +25,7 @@ Usage: install.sh [options]
 Installs Claude Code and Codex if missing, ensures a compatible uv, and installs or updates Free Claude Code.
 
 Options:
+  -y, --yes                Automatically accept interactive prompts.
   --voice-nim              Install NVIDIA NIM voice transcription support.
   --voice-local            Install local Whisper voice transcription support.
   --voice-all              Install all voice transcription backends.
@@ -58,6 +60,22 @@ fail() {
 
 step() {
     printf '  %b%s%b %s\n' "$GREEN" "$CHECK" "$RESET" "$1"
+}
+
+prompt_confirm() {
+    prompt_text=$1
+    if [ "$auto_yes" -eq 1 ]; then
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        return 0
+    fi
+    printf '  %b?%b %s [Y/n] ' "$CYAN" "$RESET" "$prompt_text"
+    read -r choice < /dev/tty || return 0
+    case "$choice" in
+        [nN]*) return 1 ;;
+        *) return 0 ;;
+    esac
 }
 
 quote_arg() {
@@ -122,14 +140,11 @@ add_known_bin_directories() {
     if [ -n "${HOME:-}" ]; then
         add_path_entry "$HOME/.local/bin"
         add_path_entry "$HOME/.cargo/bin"
-
     fi
 
     export PATH
     hash -r 2>/dev/null || true
 }
-
-
 
 codefa_process_ids() {
     command_name=$1
@@ -203,7 +218,6 @@ download_and_run() {
     fi
 
     temporary_script=$(mktemp "${TMPDIR:-/tmp}/codefa-install.XXXXXX") || fail "Unable to create a temporary file for $label."
-    print_command curl -fsSL "$url" -o "$temporary_script"
     if curl -fsSL "$url" -o "$temporary_script"; then
         :
     else
@@ -256,27 +270,37 @@ verify_command() {
 
 ensure_claude() {
     if command -v claude >/dev/null 2>&1; then
-        printf 'Claude Code already found on PATH; verifying it.\n'
-    else
-        download_and_run "$CLAUDE_INSTALL_URL" bash "Claude Code"
-        add_known_bin_directories
+        verify_command claude "Claude Code"
+        step "Claude Code verified"
+        return 0
     fi
 
-    verify_command claude "Claude Code"
+    if prompt_confirm "Install Claude Code (Anthropic CLI)?"; then
+        download_and_run "$CLAUDE_INSTALL_URL" bash "Claude Code"
+        add_known_bin_directories
+        verify_command claude "Claude Code"
+        step "Claude Code installed and verified"
+    else
+        printf '  %b✦%b Claude Code installation skipped\n' "$DIM" "$RESET"
+    fi
 }
 
 ensure_codex() {
     if command -v codex >/dev/null 2>&1; then
-        printf 'Codex already found on PATH; verifying it.\n'
-    else
-        download_and_run "$CODEX_INSTALL_URL" sh "Codex" 1
-        add_known_bin_directories
+        verify_command codex "Codex"
+        step "Codex CLI verified"
+        return 0
     fi
 
-    verify_command codex "Codex"
+    if prompt_confirm "Install Codex CLI (OpenAI CLI)?"; then
+        download_and_run "$CODEX_INSTALL_URL" sh "Codex" 1
+        add_known_bin_directories
+        verify_command codex "Codex"
+        step "Codex CLI installed and verified"
+    else
+        printf '  %b✦%b Codex CLI installation skipped\n' "$DIM" "$RESET"
+    fi
 }
-
-
 
 current_uv_version() {
     if output=$(uv --version); then
@@ -321,10 +345,20 @@ uv_version_is_supported() {
         *[!0-9]*) return 1 ;;
     esac
 
-    [ "$current_major" -gt "$minimum_major" ] && return 0
-    [ "$current_major" -lt "$minimum_major" ] && return 1
-    [ "$current_minor" -gt "$minimum_minor" ] && return 0
-    [ "$current_minor" -lt "$minimum_minor" ] && return 1
+    if [ "$current_major" -gt "$minimum_major" ]; then
+        return 0
+    fi
+    if [ "$current_major" -lt "$minimum_major" ]; then
+        return 1
+    fi
+
+    if [ "$current_minor" -gt "$minimum_minor" ]; then
+        return 0
+    fi
+    if [ "$current_minor" -lt "$minimum_minor" ]; then
+        return 1
+    fi
+
     [ "$current_patch" -ge "$minimum_patch" ]
 }
 
@@ -340,26 +374,26 @@ verify_uv() {
         fail "Stable uv $MIN_UV_VERSION or newer is required; found uv $version after installation."
     fi
 
-    printf 'Verified uv %s.\n' "$version"
+    run uv --version
 }
 
 ensure_uv() {
     if [ "$dry_run" -eq 1 ]; then
+        print_command uv --version
         if command -v uv >/dev/null 2>&1; then
-            print_command uv --version
             printf 'A compatible existing uv will be left unchanged; an obsolete one will be replaced by the standalone installer.\n'
         else
             printf 'uv is not installed; the current standalone uv would be installed.\n'
             download_and_run "$UV_INSTALL_URL" sh "uv"
-            verify_uv
         fi
+        step "Standalone uv package manager verified"
         return 0
     fi
 
     if command -v uv >/dev/null 2>&1; then
         version=$(current_uv_version) || fail "uv is present, but 'uv --version' did not return a valid version."
         if uv_version_is_supported "$version" "$MIN_UV_VERSION"; then
-            printf 'uv %s already satisfies >=%s; leaving it unchanged.\n' "$version" "$MIN_UV_VERSION"
+            step "Standalone uv package manager verified (v$version)"
             return 0
         fi
         printf 'uv %s does not satisfy stable >=%s; installing the current standalone uv.\n' "$version" "$MIN_UV_VERSION"
@@ -370,11 +404,15 @@ ensure_uv() {
     download_and_run "$UV_INSTALL_URL" sh "uv"
     add_known_bin_directories
     verify_uv
+    step "Standalone uv package manager installed"
 }
 
 parse_args() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            -y|--yes)
+                auto_yes=1
+                ;;
             --voice-nim)
                 voice_nim=1
                 ;;
@@ -450,6 +488,7 @@ install_codefa() {
     else
         run uv tool install --force --refresh-package codefa --python "$PYTHON_VERSION" "$spec"
     fi
+    step "Installed codefa package"
 }
 
 configure_and_verify_codefa() {
@@ -459,6 +498,7 @@ configure_and_verify_codefa() {
         print_command uv tool dir --bin
         printf '+ verify codefa-server, codefa-claude, and codefax in the uv tool bin directory\n'
         print_command codefa-server --version
+        step "Configured PATH and verified codefa binaries"
         return 0
     fi
 
@@ -480,48 +520,36 @@ configure_and_verify_codefa() {
     done
 
     run "$tool_bin/codefa-server" --version
+    step "Configured PATH and verified codefa binaries"
 }
 
 parse_args "$@"
 validate_args
 add_known_bin_directories
 
-step "Checking for running Free Claude Code processes"
 assert_no_codefa_processes_running
+step "Checked running codefa processes"
 
-step "Checking installation prerequisites"
 require_command curl
 require_command bash
 require_command sh
 require_command mktemp
+step "Verified installation prerequisites"
 
-step "Ensuring Claude Code is installed"
 ensure_claude
-
-step "Ensuring Codex is installed"
 ensure_codex
-
-
-
-step "Ensuring uv $MIN_UV_VERSION or newer is installed"
 ensure_uv
-
-step "Installing or updating Free Claude Code"
 install_codefa
-
-step "Configuring PATH and verifying Free Claude Code"
 configure_and_verify_codefa
 
 if [ "$dry_run" -eq 1 ]; then
     printf '\n%bDry run complete. No changes were made.%b\n' "$DIM" "$RESET"
 else
     printf '\n  %b%s%b Free Claude Code is installed and verified.\n\n' "$GREEN" "$CHECK" "$RESET"
-    printf '%b  ┌─────────────────────────────────────────────────────────────┐%b\n' "$CYAN" "$RESET"
-    printf '%b  │%b  %b🚀 Free Claude Code ready to use%b                        %b│%b\n' "$CYAN" "$RESET" "$BOLD" "$RESET" "$CYAN" "$RESET"
-    printf '%b  │%b                                                             %b│%b\n' "$CYAN" "$RESET" "$CYAN" "$RESET"
-    printf '%b  │%b   %bcodefa%b         Launch interactive AI assistant chooser   %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
-    printf '%b  │%b   %bcodefa-server%b  Start background proxy server (port 8090)  %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
-    printf '%b  │%b   %bcodefa-claude%b  Launch Anthropic Claude Code CLI directly %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
-    printf '%b  │%b   %bcodefax%b        Launch OpenAI Codex CLI directly          %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
-    printf '%b  └─────────────────────────────────────────────────────────────┘%b\n\n' "$CYAN" "$RESET"
+    printf '  %b🚀 codefa ready!%b\n\n' "$BOLD" "$RESET"
+    printf '  %bUsage:%b\n' "$BOLD" "$RESET"
+    printf '    %bcodefa%b           Launch interactive AI assistant chooser\n' "$GREEN" "$RESET"
+    printf '    %bcodefa --claude%b  Launch Anthropic Claude Code CLI\n' "$GREEN" "$RESET"
+    printf '    %bcodefa --codex%b   Launch OpenAI Codex CLI\n' "$GREEN" "$RESET"
+    printf '    %bcodefa --server%b  Start background proxy server (port 8090)\n\n' "$GREEN" "$RESET"
 fi

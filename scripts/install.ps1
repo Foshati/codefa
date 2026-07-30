@@ -1,4 +1,5 @@
 param(
+    [switch] $Yes,
     [switch] $VoiceNim,
     [switch] $VoiceLocal,
     [switch] $VoiceAll,
@@ -35,6 +36,7 @@ Usage: install.ps1 [options]
 Installs Claude Code and Codex if missing, ensures a compatible uv, and installs or updates Free Claude Code.
 
 Options:
+  -Yes                   Automatically accept interactive prompts.
   -VoiceNim              Install NVIDIA NIM voice transcription support.
   -VoiceLocal            Install local Whisper voice transcription support.
   -VoiceAll              Install all voice transcription backends.
@@ -50,6 +52,22 @@ function Write-Step {
     Write-Host "  " -NoNewline
     Write-Host "✔ " -ForegroundColor Green -NoNewline
     Write-Host "$Message"
+}
+
+function Confirm-Choice {
+    param([string] $Message)
+
+    if ($Yes) {
+        return $true
+    }
+
+    Write-Host "  ? " -ForegroundColor Cyan -NoNewline
+    Write-Host "$Message [Y/n] " -NoNewline
+    $response = Read-Host
+    if ([string]::IsNullOrWhiteSpace($response) -or $response -match '^[yY]') {
+        return $true
+    }
+    return $false
 }
 
 function Format-Argument {
@@ -259,27 +277,41 @@ function Confirm-Application {
 
 
 function Ensure-ClaudeCode {
-    if (Get-ApplicationCommand "claude") {
-        Write-Host "Claude Code already found on PATH; verifying it."
-    }
-    else {
-        Invoke-DownloadedPowerShellInstaller -Url $ClaudeInstallUrl -Name "Claude Code"
-        Add-KnownBinDirectories
+    $existing = Get-ApplicationCommand "claude"
+    if ($existing) {
+        Confirm-Application -CommandName "claude" -DisplayName "Claude Code"
+        Write-Step "Claude Code verified"
+        return
     }
 
-    Confirm-Application -CommandName "claude" -DisplayName "Claude Code"
+    if (Confirm-Choice "Install Claude Code (Anthropic CLI)?") {
+        Invoke-DownloadedPowerShellInstaller -Url $ClaudeInstallUrl -Name "Claude Code"
+        Add-KnownBinDirectories
+        Confirm-Application -CommandName "claude" -DisplayName "Claude Code"
+        Write-Step "Claude Code installed and verified"
+    }
+    else {
+        Write-Host "  ✦ Claude Code installation skipped" -ForegroundColor Gray
+    }
 }
 
 function Ensure-Codex {
-    if (Get-ApplicationCommand "codex") {
-        Write-Host "Codex already found on PATH; verifying it."
-    }
-    else {
-        Invoke-DownloadedPowerShellInstaller -Url $CodexInstallUrl -Name "Codex" -NonInteractive
-        Add-KnownBinDirectories
+    $existing = Get-ApplicationCommand "codex"
+    if ($existing) {
+        Confirm-Application -CommandName "codex" -DisplayName "Codex"
+        Write-Step "Codex CLI verified"
+        return
     }
 
-    Confirm-Application -CommandName "codex" -DisplayName "Codex"
+    if (Confirm-Choice "Install Codex CLI (OpenAI CLI)?") {
+        Invoke-DownloadedPowerShellInstaller -Url $CodexInstallUrl -Name "Codex" -NonInteractive
+        Add-KnownBinDirectories
+        Confirm-Application -CommandName "codex" -DisplayName "Codex"
+        Write-Step "Codex CLI installed and verified"
+    }
+    else {
+        Write-Host "  ✦ Codex CLI installation skipped" -ForegroundColor Gray
+    }
 }
 
 
@@ -517,23 +549,16 @@ else {
     Write-Host "✔ " -ForegroundColor Green -NoNewline
     Write-Host "Free Claude Code is installed and verified."
     Write-Host ""
-    Write-Host "  ┌─────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
-    Write-Host "  │  " -ForegroundColor Cyan -NoNewline
-    Write-Host "🚀 Free Claude Code ready to use" -ForegroundColor White -NoNewline
-    Write-Host "                        │" -ForegroundColor Cyan
-    Write-Host "  │                                                             │" -ForegroundColor Cyan
-    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
-    Write-Host "codefa" -ForegroundColor Green -NoNewline
-    Write-Host "         Launch interactive AI assistant chooser   │" -ForegroundColor Cyan
-    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
-    Write-Host "codefa-server" -ForegroundColor Green -NoNewline
-    Write-Host "  Start background proxy server (port 8090)  │" -ForegroundColor Cyan
-    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
-    Write-Host "codefa-claude" -ForegroundColor Green -NoNewline
-    Write-Host "  Launch Anthropic Claude Code CLI directly │" -ForegroundColor Cyan
-    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
-    Write-Host "codefax" -ForegroundColor Green -NoNewline
-    Write-Host "        Launch OpenAI Codex CLI directly          │" -ForegroundColor Cyan
-    Write-Host "  └─────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host "  🚀 codefa ready!" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Usage:" -ForegroundColor White
+    Write-Host "    codefa           " -ForegroundColor Green -NoNewline
+    Write-Host "Launch interactive AI assistant chooser"
+    Write-Host "    codefa --claude  " -ForegroundColor Green -NoNewline
+    Write-Host "Launch Anthropic Claude Code CLI"
+    Write-Host "    codefa --codex   " -ForegroundColor Green -NoNewline
+    Write-Host "Launch OpenAI Codex CLI"
+    Write-Host "    codefa --server  " -ForegroundColor Green -NoNewline
+    Write-Host "Start background proxy server (port 8090)"
     Write-Host ""
 }
