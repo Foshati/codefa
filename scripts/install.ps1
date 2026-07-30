@@ -47,8 +47,9 @@ Options:
 function Write-Step {
     param([string] $Message)
 
-    Write-Host ""
-    Write-Host "==> $Message"
+    Write-Host "  " -NoNewline
+    Write-Host "✔ " -ForegroundColor Green -NoNewline
+    Write-Host "$Message"
 }
 
 function Format-Argument {
@@ -512,8 +513,27 @@ if ($DryRun) {
     Write-Host "Dry run complete. No changes were made."
 }
 else {
-    Write-Host "Free Claude Code is installed and verified. Start the proxy with: codefa-server"
-    Write-Host "Run Claude Code with: codefa-claude"
-    Write-Host "Run Codex with: codefax"
-
+    Write-Host "  " -NoNewline
+    Write-Host "✔ " -ForegroundColor Green -NoNewline
+    Write-Host "Free Claude Code is installed and verified."
+    Write-Host ""
+    Write-Host "  ┌─────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "  │  " -ForegroundColor Cyan -NoNewline
+    Write-Host "🚀 Free Claude Code ready to use" -ForegroundColor White -NoNewline
+    Write-Host "                        │" -ForegroundColor Cyan
+    Write-Host "  │                                                             │" -ForegroundColor Cyan
+    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
+    Write-Host "codefa" -ForegroundColor Green -NoNewline
+    Write-Host "         Launch interactive AI assistant chooser   │" -ForegroundColor Cyan
+    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
+    Write-Host "codefa-server" -ForegroundColor Green -NoNewline
+    Write-Host "  Start background proxy server (port 8090)  │" -ForegroundColor Cyan
+    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
+    Write-Host "codefa-claude" -ForegroundColor Green -NoNewline
+    Write-Host "  Launch Anthropic Claude Code CLI directly │" -ForegroundColor Cyan
+    Write-Host "  │   " -ForegroundColor Cyan -NoNewline
+    Write-Host "codefax" -ForegroundColor Green -NoNewline
+    Write-Host "        Launch OpenAI Codex CLI directly          │" -ForegroundColor Cyan
+    Write-Host "  └─────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host ""
 }

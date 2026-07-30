@@ -33,13 +33,31 @@ Options:
 USAGE
 }
 
+if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    GREEN="\033[1;32m"
+    CYAN="\033[1;36m"
+    DIM="\033[2m"
+    BOLD="\033[1m"
+    RED="\033[1;31m"
+    RESET="\033[0m"
+    CHECK="✔"
+else
+    GREEN=""
+    CYAN=""
+    DIM=""
+    BOLD=""
+    RED=""
+    RESET=""
+    CHECK="✔"
+fi
+
 fail() {
-    printf 'error: %s\n' "$*" >&2
+    printf '%berror:%b %s\n' "$RED" "$RESET" "$*" >&2
     exit 1
 }
 
 step() {
-    printf '\n==> %s\n' "$1"
+    printf '  %b%s%b %s\n' "$GREEN" "$CHECK" "$RESET" "$1"
 }
 
 quote_arg() {
@@ -495,10 +513,15 @@ step "Configuring PATH and verifying Free Claude Code"
 configure_and_verify_codefa
 
 if [ "$dry_run" -eq 1 ]; then
-    printf '\nDry run complete. No changes were made.\n'
+    printf '\n%bDry run complete. No changes were made.%b\n' "$DIM" "$RESET"
 else
-    printf '\nFree Claude Code is installed and verified. Start the proxy with: codefa-server\n'
-    printf 'Run Claude Code with: codefa-claude\n'
-    printf 'Run Codex with: codefax\n'
-
+    printf '\n  %b%s%b Free Claude Code is installed and verified.\n\n' "$GREEN" "$CHECK" "$RESET"
+    printf '%b  ┌─────────────────────────────────────────────────────────────┐%b\n' "$CYAN" "$RESET"
+    printf '%b  │%b  %b🚀 Free Claude Code ready to use%b                        %b│%b\n' "$CYAN" "$RESET" "$BOLD" "$RESET" "$CYAN" "$RESET"
+    printf '%b  │%b                                                             %b│%b\n' "$CYAN" "$RESET" "$CYAN" "$RESET"
+    printf '%b  │%b   %bcodefa%b         Launch interactive AI assistant chooser   %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
+    printf '%b  │%b   %bcodefa-server%b  Start background proxy server (port 8090)  %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
+    printf '%b  │%b   %bcodefa-claude%b  Launch Anthropic Claude Code CLI directly %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
+    printf '%b  │%b   %bcodefax%b        Launch OpenAI Codex CLI directly          %b│%b\n' "$CYAN" "$RESET" "$GREEN" "$RESET" "$CYAN" "$RESET"
+    printf '%b  └─────────────────────────────────────────────────────────────┘%b\n\n' "$CYAN" "$RESET"
 fi
