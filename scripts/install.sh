@@ -82,11 +82,6 @@ prompt_confirm() {
     else
         read -r choice || return 0
     fi
-
-    if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
-        printf '\033[1A\033[2K'
-    fi
-
     case "$choice" in
         [nN]*) return 1 ;;
         *) return 0 ;;
@@ -134,7 +129,9 @@ run_quiet() {
 }
 
 run() {
-    print_command "$@"
+    if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
+        print_command "$@"
+    fi
     if [ "$dry_run" -eq 1 ]; then
         return 0
     fi
@@ -158,8 +155,6 @@ run_with_spinner() {
         return 0
     fi
 
-    print_command "$@"
-
     if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
         "$@" >/dev/null 2>&1 &
         pid=$!
@@ -173,7 +168,7 @@ run_with_spinner() {
         done
         wait "$pid"
         status=$?
-        printf '                                                                \r'
+        printf '\033[2K\r'
     else
         "$@" >/dev/null 2>&1
         status=$?
@@ -597,7 +592,7 @@ install_codefa() {
 }
 
 configure_and_verify_codefa() {
-    run uv tool update-shell
+    run_quiet uv tool update-shell
 
     if [ "$dry_run" -eq 1 ]; then
         print_command uv tool dir --bin
@@ -607,8 +602,7 @@ configure_and_verify_codefa() {
         return 0
     fi
 
-    print_command uv tool dir --bin
-    if tool_bin=$(uv tool dir --bin); then
+    if tool_bin=$(uv tool dir --bin 2>/dev/null); then
         :
     else
         status=$?
@@ -624,7 +618,7 @@ configure_and_verify_codefa() {
         [ -x "$tool_bin/$command_name" ] || fail "codefa installation did not create $tool_bin/$command_name."
     done
 
-    run "$tool_bin/codefa-server" --version
+    run_quiet "$tool_bin/codefa-server" --version
     step "Configured PATH and verified codefa binaries"
 }
 
@@ -650,7 +644,7 @@ configure_and_verify_codefa
 if [ "$dry_run" -eq 1 ]; then
     printf '\n%bDry run complete. No changes were made.%b\n' "$DIM" "$RESET"
 else
-    printf '\n  %b🚀 codefa ready!%b\n\n' "$BOLD" "$RESET"
+    printf '\n  %b✨ codefa ready!%b\n\n' "$BOLD" "$RESET"
     printf '  %bUsage:%b\n' "$BOLD" "$RESET"
     printf '    %bcodefa%b           Launch interactive AI assistant chooser\n' "$GREEN" "$RESET"
     printf '    %bcodefa --claude%b  Launch Anthropic Claude Code CLI\n' "$GREEN" "$RESET"

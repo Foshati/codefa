@@ -583,16 +583,12 @@ if ($DryRun) {
 }
 else {
     Write-Host ""
-    Write-Host "  🚀 codefa ready!" -ForegroundColor White
+    Write-Host "  ✨ codefa ready!" -ForegroundColor White
     Write-Host ""
     Write-Host "  Usage:" -ForegroundColor White
-    Write-Host "    codefa           " -ForegroundColor Green -NoNewline
-    Write-Host "Launch interactive AI assistant chooser"
-    Write-Host "    codefa --claude  " -ForegroundColor Green -NoNewline
-    Write-Host "Launch Anthropic Claude Code CLI"
-    Write-Host "    codefa --codex   " -ForegroundColor Green -NoNewline
-    Write-Host "Launch OpenAI Codex CLI"
-    Write-Host "    codefa --server  " -ForegroundColor Green -NoNewline
-    Write-Host "Start background proxy server (port 8090)"
+    Write-Host "    codefa           Launch interactive AI assistant chooser" -ForegroundColor Green
+    Write-Host "    codefa --claude  Launch Anthropic Claude Code CLI" -ForegroundColor Green
+    Write-Host "    codefa --codex   Launch OpenAI Codex CLI" -ForegroundColor Green
+    Write-Host "    codefa --server  Start background proxy server (port 8090)" -ForegroundColor Green
     Write-Host ""
 }
