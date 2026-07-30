@@ -4,10 +4,9 @@
   <p><strong>The High-Performance Local AI Proxy & Control Center for Coding Agents</strong></p>
 
   <p>
-    <a href="https://github.com/Foshati/codefa/releases"><img src="https://img.shields.io/badge/version-5.0.7-blue.svg?style=flat-square" alt="Version"></a>
-    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.14-green.svg?style=flat-square" alt="Python"></a>
-    <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-0.141-009688.svg?style=flat-square" alt="FastAPI"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple.svg?style=flat-square" alt="License"></a>
+    <a href="pyproject.toml"><img src="https://img.shields.io/badge/version-1.2.39-blue" alt="Version"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.14-green" alt="Python"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
   </p>
 </div>
 

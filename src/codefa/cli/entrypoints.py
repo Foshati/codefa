@@ -103,11 +103,26 @@ def _parse_combined_args(argv: Sequence[str] | None) -> tuple[str | None, list[s
 
     for arg in raw_args:
         arg_lower = arg.lower()
-        if target_client is None and arg_lower in ("claude", "codefa-claude", "--claude", "-c"):
+        if target_client is None and arg_lower in (
+            "claude",
+            "codefa-claude",
+            "--claude",
+            "-c",
+        ):
             target_client = "claude"
-        elif target_client is None and arg_lower in ("codex", "codefax", "--codex", "-x"):
+        elif target_client is None and arg_lower in (
+            "codex",
+            "codefax",
+            "--codex",
+            "-x",
+        ):
             target_client = "codex"
-        elif target_client is None and arg_lower in ("server", "codefa-server", "--server", "-s"):
+        elif target_client is None and arg_lower in (
+            "server",
+            "codefa-server",
+            "--server",
+            "-s",
+        ):
             target_client = "server"
         else:
             remaining.append(arg)
@@ -176,7 +191,9 @@ def _select_client_interactively() -> str:
         pass
 
     target_key, target_title, _ = options[selected_index]
-    console.print(f"[bold cyan]codefa[/bold cyan] [dim]v{version}[/dim] → [bold green]{target_title}[/bold green]\n")
+    console.print(
+        f"[bold cyan]codefa[/bold cyan] [dim]v{version}[/dim] → [bold green]{target_title}[/bold green]\n"
+    )
     return target_key
 
 

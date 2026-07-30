@@ -17,3 +17,5 @@ llama_cache
 .vscode
 .DS_Store
 *.DS_Store
+node_modules
+.backup_history_staging

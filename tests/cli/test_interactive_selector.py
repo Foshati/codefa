@@ -59,7 +59,9 @@ def test_select_client_interactively_tty_choices():
 
     with (
         patch("sys.stdin.isatty", return_value=True),
-        patch("codefa.cli.entrypoints._read_key", side_effect=["down", "down", "enter"]),
+        patch(
+            "codefa.cli.entrypoints._read_key", side_effect=["down", "down", "enter"]
+        ),
     ):
         assert _select_client_interactively() == "server"
 
