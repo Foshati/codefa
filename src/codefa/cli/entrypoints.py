@@ -146,7 +146,7 @@ def _select_client_interactively() -> str:
     from rich.live import Live
     from rich.text import Text
 
-    console = Console()
+    console = Console(highlight=False)
     version = package_version()
 
     def make_renderable(idx: int) -> Group:
@@ -192,7 +192,8 @@ def _select_client_interactively() -> str:
 
     target_key, target_title, _ = options[selected_index]
     console.print(
-        f"[bold cyan]codefa[/bold cyan] [dim]v{version}[/dim] → [bold green]{target_title}[/bold green]\n"
+        f"[bold cyan]codefa[/bold cyan] [dim]v{version}[/dim] → [bold green]{target_title}[/bold green]\n",
+        highlight=False,
     )
     return target_key
 
