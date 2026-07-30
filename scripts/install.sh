@@ -67,11 +67,21 @@ prompt_confirm() {
     if [ "$auto_yes" -eq 1 ]; then
         return 0
     fi
-    if [ ! -t 0 ]; then
+    tty_path=""
+    if [ -c /dev/tty ]; then
+        tty_path="/dev/tty"
+    fi
+
+    if [ -z "$tty_path" ] && [ ! -t 0 ]; then
         return 0
     fi
+
     printf '  %b?%b %s [Y/n] ' "$CYAN" "$RESET" "$prompt_text"
-    read -r choice < /dev/tty || return 0
+    if [ -n "$tty_path" ]; then
+        read -r choice < "$tty_path" || return 0
+    else
+        read -r choice || return 0
+    fi
     case "$choice" in
         [nN]*) return 1 ;;
         *) return 0 ;;
@@ -100,18 +110,54 @@ print_command() {
 }
 
 run() {
-    print_command "$@"
+    if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
+        print_command "$@"
+    fi
     if [ "$dry_run" -eq 1 ]; then
         return 0
     fi
 
-    if "$@"; then
-        return 0
+    if [ "${verbose:-0}" -eq 1 ]; then
+        "$@"
     else
+        "$@" >/dev/null 2>&1
+    fi
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        fail "Command failed with exit code $status: $1"
+    fi
+}
+
+run_with_spinner() {
+    title=$1
+    shift
+    if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
+        run "$@"
+        return 0
+    fi
+
+    if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
+        "$@" >/dev/null 2>&1 &
+        pid=$!
+        spinchars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        i=0
+        while kill -0 "$pid" 2>/dev/null; do
+            i=$(( (i + 1) % 10 ))
+            char=$(printf '%s' "$spinchars" | cut -c $((i + 1)))
+            printf '  %b%s%b %s...\r' "$CYAN" "$char" "$RESET" "$title"
+            sleep 0.1
+        done
+        wait "$pid"
+        status=$?
+        printf '                                                                \r'
+    else
+        "$@" >/dev/null 2>&1
         status=$?
     fi
 
-    fail "Command failed with exit code $status: $1"
+    if [ "$status" -ne 0 ]; then
+        fail "$title failed with exit code $status."
+    fi
 }
 
 cleanup() {
@@ -218,7 +264,7 @@ download_and_run() {
     fi
 
     temporary_script=$(mktemp "${TMPDIR:-/tmp}/codefa-install.XXXXXX") || fail "Unable to create a temporary file for $label."
-    if curl -fsSL "$url" -o "$temporary_script"; then
+    if curl -fsSL "$url" -o "$temporary_script" >/dev/null 2>&1; then
         :
     else
         status=$?
@@ -230,24 +276,22 @@ download_and_run() {
     fi
 
     if [ "$non_interactive" -eq 1 ]; then
-        printf '+ CODEX_NON_INTERACTIVE=1 '
-        quote_arg "$interpreter"
-        printf ' '
-        quote_arg "$temporary_script"
-        printf '\n'
-        if CODEX_NON_INTERACTIVE=1 "$interpreter" "$temporary_script"; then
-            :
+        if [ "${verbose:-0}" -eq 1 ]; then
+            printf '+ CODEX_NON_INTERACTIVE=1 '
+            quote_arg "$interpreter"
+            printf ' '
+            quote_arg "$temporary_script"
+            printf '\n'
+            CODEX_NON_INTERACTIVE=1 "$interpreter" "$temporary_script" || fail "$label installation failed."
         else
-            status=$?
-            fail "$label installation failed with exit code $status."
+            CODEX_NON_INTERACTIVE=1 "$interpreter" "$temporary_script" >/dev/null 2>&1 || fail "$label installation failed."
         fi
     else
-        print_command "$interpreter" "$temporary_script"
-        if "$interpreter" "$temporary_script"; then
-            :
+        if [ "${verbose:-0}" -eq 1 ]; then
+            print_command "$interpreter" "$temporary_script"
+            "$interpreter" "$temporary_script" || fail "$label installation failed."
         else
-            status=$?
-            fail "$label installation failed with exit code $status."
+            "$interpreter" "$temporary_script" >/dev/null 2>&1 || fail "$label installation failed."
         fi
     fi
 
@@ -522,11 +566,10 @@ install_codefa() {
     spec=$(package_spec)
 
     if [ -n "$torch_backend" ]; then
-        run uv tool install --force --refresh-package codefa --python "$PYTHON_VERSION" --torch-backend "$torch_backend" "$spec"
+        run_with_spinner "Installing codefa package" uv tool install --force --refresh-package codefa --python "$PYTHON_VERSION" --torch-backend "$torch_backend" "$spec"
     else
-        run uv tool install --force --refresh-package codefa --python "$PYTHON_VERSION" "$spec"
+        run_with_spinner "Installing codefa package" uv tool install --force --refresh-package codefa --python "$PYTHON_VERSION" "$spec"
     fi
-    step "Installed codefa package"
 }
 
 configure_and_verify_codefa() {
