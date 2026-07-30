@@ -83,8 +83,18 @@ prompt_confirm() {
         read -r choice || return 0
     fi
     case "$choice" in
-        [nN]*) return 1 ;;
-        *) return 0 ;;
+        [nN]*)
+            if [ -t 1 ]; then
+                printf '\033[1A\033[2K\r  %b✦%b %s [skipped]\n' "$DIM" "$RESET" "$prompt_text"
+            fi
+            return 1
+            ;;
+        *)
+            if [ -t 1 ]; then
+                printf '\033[1A\033[2K\r  %b%s%b %s\n' "$GREEN" "$CHECK" "$RESET" "$prompt_text"
+            fi
+            return 0
+            ;;
     esac
 }
 
