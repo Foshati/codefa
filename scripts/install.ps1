@@ -582,9 +582,6 @@ if ($DryRun) {
     Write-Host "Dry run complete. No changes were made."
 }
 else {
-    Write-Host "  " -NoNewline
-    Write-Host "✔ " -ForegroundColor Green -NoNewline
-    Write-Host "codefa is installed and verified."
     Write-Host ""
     Write-Host "  🚀 codefa ready!" -ForegroundColor White
     Write-Host ""
