@@ -33,7 +33,7 @@ function Show-Usage {
     @"
 Usage: install.ps1 [options]
 
-Installs Claude Code and Codex if missing, ensures a compatible uv, and installs or updates Free Claude Code.
+Installs Claude Code and Codex if missing, ensures a compatible uv, and installs or updates codefa.
 
 Options:
   -Yes                   Automatically accept interactive prompts.
@@ -201,7 +201,7 @@ function Assert-NoCodefaProcessesRunning {
     }
 
     if ($running.Count -gt 0) {
-        throw "Free Claude Code is still running ($($running -join ', ')). Stop those processes, then rerun the installer."
+        throw "codefa is still running ($($running -join ', ')). Stop those processes, then rerun the installer."
     }
 }
 
@@ -276,11 +276,30 @@ function Confirm-Application {
 }
 
 
+function Get-CommandVersion {
+    param([string] $CommandName)
+
+    $command = Get-ApplicationCommand $CommandName
+    if ($command) {
+        $raw = (& $command.Source --version 2>$null | Select-Object -First 1 | Out-String).Trim()
+        if ($raw -match '(?<ver>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?)') {
+            return "v" + $Matches["ver"]
+        }
+    }
+    return ""
+}
+
 function Ensure-ClaudeCode {
     $existing = Get-ApplicationCommand "claude"
     if ($existing) {
         Confirm-Application -CommandName "claude" -DisplayName "Claude Code"
-        Write-Step "Claude Code verified"
+        $ver = Get-CommandVersion "claude"
+        if ($ver) {
+            Write-Step "Claude Code verified ($ver)"
+        }
+        else {
+            Write-Step "Claude Code verified"
+        }
         return
     }
 
@@ -288,7 +307,13 @@ function Ensure-ClaudeCode {
         Invoke-DownloadedPowerShellInstaller -Url $ClaudeInstallUrl -Name "Claude Code"
         Add-KnownBinDirectories
         Confirm-Application -CommandName "claude" -DisplayName "Claude Code"
-        Write-Step "Claude Code installed and verified"
+        $ver = Get-CommandVersion "claude"
+        if ($ver) {
+            Write-Step "Claude Code installed and verified ($ver)"
+        }
+        else {
+            Write-Step "Claude Code installed and verified"
+        }
     }
     else {
         Write-Host "  ✦ Claude Code installation skipped" -ForegroundColor Gray
@@ -299,7 +324,13 @@ function Ensure-Codex {
     $existing = Get-ApplicationCommand "codex"
     if ($existing) {
         Confirm-Application -CommandName "codex" -DisplayName "Codex"
-        Write-Step "Codex CLI verified"
+        $ver = Get-CommandVersion "codex"
+        if ($ver) {
+            Write-Step "Codex CLI verified ($ver)"
+        }
+        else {
+            Write-Step "Codex CLI verified"
+        }
         return
     }
 
@@ -307,7 +338,13 @@ function Ensure-Codex {
         Invoke-DownloadedPowerShellInstaller -Url $CodexInstallUrl -Name "Codex" -NonInteractive
         Add-KnownBinDirectories
         Confirm-Application -CommandName "codex" -DisplayName "Codex"
-        Write-Step "Codex CLI installed and verified"
+        $ver = Get-CommandVersion "codex"
+        if ($ver) {
+            Write-Step "Codex CLI installed and verified ($ver)"
+        }
+        else {
+            Write-Step "Codex CLI installed and verified"
+        }
     }
     else {
         Write-Host "  ✦ Codex CLI installation skipped" -ForegroundColor Gray
@@ -489,7 +526,7 @@ function Configure-AndConfirmFreeClaudeCode {
     foreach ($commandName in @("codefa-server", "codefa-claude", "codefax")) {
         $command = Get-ApplicationCommand $commandName
         if (-not $command) {
-            throw "Free Claude Code installation did not create '$commandName'."
+            throw "codefa installation did not create '$commandName'."
         }
         $commandDirectory = ([IO.Path]::GetFullPath((Split-Path -Parent $command.Source))).TrimEnd(
             [IO.Path]::DirectorySeparatorChar,
@@ -547,7 +584,7 @@ if ($DryRun) {
 else {
     Write-Host "  " -NoNewline
     Write-Host "✔ " -ForegroundColor Green -NoNewline
-    Write-Host "Free Claude Code is installed and verified."
+    Write-Host "codefa is installed and verified."
     Write-Host ""
     Write-Host "  🚀 codefa ready!" -ForegroundColor White
     Write-Host ""

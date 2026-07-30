@@ -22,7 +22,7 @@ show_usage() {
     cat <<'USAGE'
 Usage: install.sh [options]
 
-Installs Claude Code and Codex if missing, ensures a compatible uv, and installs or updates Free Claude Code.
+Installs or updating codefa if missing, ensures a compatible uv, and installs or updates codefa.
 
 Options:
   -y, --yes                Automatically accept interactive prompts.
@@ -189,7 +189,7 @@ assert_no_codefa_processes_running() {
     done
 
     if [ -n "$running" ]; then
-        fail "Free Claude Code is still running ($running). Stop those processes, then rerun the installer."
+        fail "codefa is still running ($running). Stop those processes, then rerun the installer."
     fi
 }
 
@@ -255,23 +255,46 @@ download_and_run() {
     temporary_script=""
 }
 
+get_command_version() {
+    command_name=$1
+    if command_path=$(command -v "$command_name" 2>/dev/null); then
+        raw=$("$command_path" --version 2>/dev/null | head -n 1) || return 0
+        clean=${raw%%(*}
+        ver=$(printf '%s' "$clean" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' 2>/dev/null | head -n 1) || true
+        if [ -n "$ver" ]; then
+            printf 'v%s' "$ver"
+        fi
+    fi
+}
+
 verify_command() {
     command_name=$1
     display_name=$2
 
-    if [ "$dry_run" -eq 1 ]; then
+    if [ "$dry_run" -eq 1 ] || [ "${verbose:-0}" -eq 1 ]; then
         print_command "$command_name" --version
+    fi
+    if [ "$dry_run" -eq 1 ]; then
         return 0
     fi
 
     command_path=$(command -v "$command_name" 2>/dev/null) || fail "$display_name was installed, but '$command_name' is not available on PATH."
-    run "$command_path" --version
+    if [ "${verbose:-0}" -eq 1 ]; then
+        run "$command_path" --version
+    else
+        "$command_path" --version >/dev/null 2>&1 || fail "$display_name version check failed."
+    fi
 }
 
 ensure_claude() {
     if command -v claude >/dev/null 2>&1; then
         verify_command claude "Claude Code"
-        step "Claude Code verified"
+        ver=$(get_command_version claude)
+        if [ -n "$ver" ]; then
+            step "Claude Code verified ($ver)"
+        else
+            step "Claude Code verified"
+        fi
         return 0
     fi
 
@@ -279,7 +302,12 @@ ensure_claude() {
         download_and_run "$CLAUDE_INSTALL_URL" bash "Claude Code"
         add_known_bin_directories
         verify_command claude "Claude Code"
-        step "Claude Code installed and verified"
+        ver=$(get_command_version claude)
+        if [ -n "$ver" ]; then
+            step "Claude Code installed and verified ($ver)"
+        else
+            step "Claude Code installed and verified"
+        fi
     else
         printf '  %b✦%b Claude Code installation skipped\n' "$DIM" "$RESET"
     fi
@@ -288,7 +316,12 @@ ensure_claude() {
 ensure_codex() {
     if command -v codex >/dev/null 2>&1; then
         verify_command codex "Codex"
-        step "Codex CLI verified"
+        ver=$(get_command_version codex)
+        if [ -n "$ver" ]; then
+            step "Codex CLI verified ($ver)"
+        else
+            step "Codex CLI verified"
+        fi
         return 0
     fi
 
@@ -296,7 +329,12 @@ ensure_codex() {
         download_and_run "$CODEX_INSTALL_URL" sh "Codex" 1
         add_known_bin_directories
         verify_command codex "Codex"
-        step "Codex CLI installed and verified"
+        ver=$(get_command_version codex)
+        if [ -n "$ver" ]; then
+            step "Codex CLI installed and verified ($ver)"
+        else
+            step "Codex CLI installed and verified"
+        fi
     else
         printf '  %b✦%b Codex CLI installation skipped\n' "$DIM" "$RESET"
     fi
@@ -516,7 +554,7 @@ configure_and_verify_codefa() {
     hash -r 2>/dev/null || true
 
     for command_name in codefa-server codefa-claude codefax; do
-        [ -x "$tool_bin/$command_name" ] || fail "Free Claude Code installation did not create $tool_bin/$command_name."
+        [ -x "$tool_bin/$command_name" ] || fail "codefa installation did not create $tool_bin/$command_name."
     done
 
     run "$tool_bin/codefa-server" --version
@@ -528,7 +566,7 @@ validate_args
 add_known_bin_directories
 
 assert_no_codefa_processes_running
-step "Checked running codefa processes"
+step "Checking for running codefa processes"
 
 require_command curl
 require_command bash
@@ -545,7 +583,7 @@ configure_and_verify_codefa
 if [ "$dry_run" -eq 1 ]; then
     printf '\n%bDry run complete. No changes were made.%b\n' "$DIM" "$RESET"
 else
-    printf '\n  %b%s%b Free Claude Code is installed and verified.\n\n' "$GREEN" "$CHECK" "$RESET"
+    printf '\n  %b%s%b codefa is installed and verified.\n\n' "$GREEN" "$CHECK" "$RESET"
     printf '  %b🚀 codefa ready!%b\n\n' "$BOLD" "$RESET"
     printf '  %bUsage:%b\n' "$BOLD" "$RESET"
     printf '    %bcodefa%b           Launch interactive AI assistant chooser\n' "$GREEN" "$RESET"

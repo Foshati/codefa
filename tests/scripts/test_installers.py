@@ -300,7 +300,7 @@ def test_install_sh_fresh_install_is_verified(posix_harness: PosixHarness) -> No
     result = posix_harness.run()
 
     assert result.returncode == 0, result.stderr
-    assert "Free Claude Code is installed and verified." in result.stdout
+    assert "codefa is installed and verified." in result.stdout
     calls = posix_harness.calls()
     assert calls.index("claude-install") < calls.index("claude:--version")
     assert calls.index("codex-install:1") < calls.index("codex:--version")
@@ -384,7 +384,7 @@ def test_install_sh_stops_without_success_on_each_failure(
     result = posix_harness.run(fail_step=failure)
 
     assert result.returncode != 0
-    assert "Free Claude Code is installed and verified." not in result.stdout
+    assert "codefa is installed and verified." not in result.stdout
     forbidden = {
         "claude-download": "claude-install",
         "claude-install": "claude:--version",
@@ -411,7 +411,7 @@ def test_install_sh_dry_run_never_executes_commands(
     assert result.returncode == 0, result.stderr
     assert posix_harness.calls() == []
     assert "Dry run complete. No changes were made." in result.stdout
-    assert "Free Claude Code is installed and verified." not in result.stdout
+    assert "codefa is installed and verified." not in result.stdout
 
 
 def test_install_sh_rejects_broken_existing_client_without_replacing_it(
@@ -779,7 +779,7 @@ def test_install_ps1_fresh_install_is_verified(
     result = powershell_harness.run()
 
     assert result.returncode == 0, result.stderr
-    assert "Free Claude Code is installed and verified." in result.stdout
+    assert "codefa is installed and verified." in result.stdout
     calls = powershell_harness.calls()
     assert calls.index("claude-install") < calls.index("claude:--version")
     assert calls.index("codex-install:1") < calls.index("codex:--version")
@@ -865,7 +865,7 @@ def test_install_ps1_stops_without_success_on_each_failure(
     result = powershell_harness.run(fail_step=failure)
 
     assert result.returncode != 0
-    assert "Free Claude Code is installed and verified." not in result.stdout
+    assert "codefa is installed and verified." not in result.stdout
     forbidden = {
         "claude-download": "claude-install",
         "claude-install": "claude:--version",
@@ -906,7 +906,7 @@ def test_install_ps1_dry_run_never_executes_commands(
     assert result.returncode == 0, result.stderr
     assert powershell_harness.calls() == []
     assert "Dry run complete. No changes were made." in result.stdout
-    assert "Free Claude Code is installed and verified." not in result.stdout
+    assert "codefa is installed and verified." not in result.stdout
 
 
 def test_install_ps1_rejects_broken_existing_client_without_replacing_it(
