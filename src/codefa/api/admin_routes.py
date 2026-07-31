@@ -135,11 +135,28 @@ async def admin_status(
     return services.admin.admin_status()
 
 
+def _read_and_parse_logs(log_file: Path, limit: int) -> list[dict[str, Any]]:
+    import json
+
+    with open(log_file, encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+
+    parsed_logs = []
+    for line in lines[-limit:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed_logs.append(json.loads(line))
+        except Exception:
+            parsed_logs.append({"message": line, "level": "INFO"})
+    return parsed_logs
+
+
 @router.get("/admin/api/logs")
 async def get_server_logs(request: Request, limit: int = 500):
     require_loopback_admin(request)
-    import json
-
+    import asyncio
     from codefa.config.paths import server_log_path
 
     log_file = server_log_path()
@@ -147,18 +164,7 @@ async def get_server_logs(request: Request, limit: int = 500):
         return {"logs": []}
 
     try:
-        with open(log_file, encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-
-        parsed_logs = []
-        for line in lines[-limit:]:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                parsed_logs.append(json.loads(line))
-            except Exception:
-                parsed_logs.append({"message": line, "level": "INFO"})
+        parsed_logs = await asyncio.to_thread(_read_and_parse_logs, log_file, limit)
         return {"logs": parsed_logs}
     except Exception as exc:
         raise HTTPException(
