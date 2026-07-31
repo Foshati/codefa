@@ -254,6 +254,15 @@ async def _check_local_provider(
             "base_url": base_url,
         }
 
+    parsed = urlsplit(clean_url)
+    if not _is_loopback_host(parsed.hostname):
+        return {
+            "provider_id": provider_id,
+            "status": "invalid_url",
+            "label": "Invalid URL",
+            "base_url": base_url,
+        }
+
     url = f"{clean_url}{path}"
     try:
         async with httpx.AsyncClient(timeout=1.5) as client:
