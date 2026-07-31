@@ -157,6 +157,7 @@ def _read_and_parse_logs(log_file: Path, limit: int) -> list[dict[str, Any]]:
 async def get_server_logs(request: Request, limit: int = 500):
     require_loopback_admin(request)
     import asyncio
+
     from codefa.config.paths import server_log_path
 
     log_file = server_log_path()
