@@ -1,5 +1,6 @@
 """Credential-safe diagnostics shared across product boundaries."""
 
+import contextlib
 import json
 import re
 import traceback
@@ -195,14 +196,11 @@ def _body_from_response(exc: Exception) -> Any:
     response = getattr(exc, "response", None)
     if response is None:
         return None
-    try:
+    with contextlib.suppress(Exception):
         return response.json()
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         return response.text
-    except Exception:
-        return None
+    return None
 
 
 def _normalize_body_text(body: Any) -> str | None:
