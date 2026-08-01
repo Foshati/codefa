@@ -10,7 +10,10 @@ def test_extract_url_basic_https():
 
 
 def test_extract_url_embedded_in_text():
-    assert extract_url("Here is a link: https://example.com check it out.") == "https://example.com"
+    assert (
+        extract_url("Here is a link: https://example.com check it out.")
+        == "https://example.com"
+    )
 
 
 def test_extract_url_trailing_punctuation_dot():
@@ -18,7 +21,9 @@ def test_extract_url_trailing_punctuation_dot():
 
 
 def test_extract_url_trailing_punctuation_comma():
-    assert extract_url("Go to https://example.com, and then...") == "https://example.com"
+    assert (
+        extract_url("Go to https://example.com, and then...") == "https://example.com"
+    )
 
 
 def test_extract_url_trailing_punctuation_parenthesis():
@@ -34,7 +39,9 @@ def test_extract_url_trailing_punctuation_multiple():
 
 
 def test_extract_url_no_url_fallback():
-    assert extract_url("   Just some text with no url   ") == "Just some text with no url"
+    assert (
+        extract_url("   Just some text with no url   ") == "Just some text with no url"
+    )
 
 
 def test_extract_url_no_url_empty():
