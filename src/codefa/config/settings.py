@@ -104,6 +104,9 @@ class Settings(BaseSettings):
     # ==================== Ollama Cloud ====================
     ollama_api_key: str = Field(default="", validation_alias="OLLAMA_API_KEY")
 
+    # ==================== TokenRouter Config ====================
+    tokenrouter_api_key: str = Field(default="", validation_alias="TOKENROUTER_API_KEY")
+
     # ==================== Messaging Platform Selection ====================
     # Valid: "telegram" | "discord" | "none"
     messaging_platform: str = Field(
@@ -178,6 +181,7 @@ class Settings(BaseSettings):
     groq_proxy: str = Field(default="", validation_alias="GROQ_PROXY")
     cerebras_proxy: str = Field(default="", validation_alias="CEREBRAS_PROXY")
     ollama_cloud_proxy: str = Field(default="", validation_alias="OLLAMA_CLOUD_PROXY")
+    tokenrouter_proxy: str = Field(default="", validation_alias="TOKENROUTER_PROXY")
 
     # ==================== Provider Rate Limiting ====================
     provider_rate_limit: int = Field(default=40, validation_alias="PROVIDER_RATE_LIMIT")
