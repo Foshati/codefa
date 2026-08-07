@@ -1260,7 +1260,7 @@ function openProviderModal(providerId) {
   });
 
   const testBtn = byId("modalTestBtn");
-  testBtn.textContent = provider.kind === "local" ? "Test" : "Refresh models";
+  testBtn.textContent = "Test Provider";
   const newTestBtn = testBtn.cloneNode(true);
   testBtn.parentNode.replaceChild(newTestBtn, testBtn);
   newTestBtn.addEventListener("click", () => {
@@ -1300,10 +1300,7 @@ async function testProviderInModal(providerId, button) {
         result.models.slice(0, 3).join(", ") || "No models returned",
       );
       showMessage(`Success: Connected to ${providerId}. Found ${result.models.length} models.`, "ok");
-      setModelOptions([
-        ...state.modelOptions,
-        ...result.models.map((model) => `${providerId}/${model}`),
-      ]);
+      await loadModels();
     } else {
       updateProviderCard(providerId, "offline", result.error_type, result.error_type);
       showMessage(`Connection failed: ${result.error_type}`, "error");
