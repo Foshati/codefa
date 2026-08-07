@@ -116,6 +116,7 @@ codefa-init     # Initialize ~/.codefa/.env config
 | [Cloudflare](https://workers.cloudflare.com) | Workers AI catalog | `cloudflare/@cf/meta/llama-3.3-70b-instruct` |
 | [Z.ai](https://z.ai) | Z.ai GLM Coding Plan | `zai/glm-4` |
 | [Ollama Cloud](https://ollama.com) | Ollama Cloud remote | `ollama_cloud/llama3.3` |
+| [TokenRouter](https://www.tokenrouter.com) | TokenRouter Unified Gateway | `tokenrouter/claude-3-5-sonnet` |
 | [LM Studio](https://lmstudio.ai) | Local LM Studio server | `lmstudio/local-model` |
 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | Local llama.cpp server | `llamacpp/local-model` |
 | [Ollama](https://ollama.com) | Local Ollama instance | `ollama/llama3.3:latest` |

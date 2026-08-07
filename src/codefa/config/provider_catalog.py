@@ -45,6 +45,7 @@ VERTEX_AI_API_ROOT = "https://aiplatform.googleapis.com"
 GROQ_DEFAULT_BASE = "https://api.groq.com/openai/v1"
 CEREBRAS_DEFAULT_BASE = "https://api.cerebras.ai/v1"
 SAMBANOVA_DEFAULT_BASE = "https://api.sambanova.ai/v1"
+TOKENROUTER_DEFAULT_BASE = "https://api.tokenrouter.com/v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +305,15 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
         credential_attr="ollama_api_key",
         default_base_url=OLLAMA_CLOUD_DEFAULT_BASE,
         proxy_attr="ollama_cloud_proxy",
+    ),
+    "tokenrouter": ProviderDescriptor(
+        provider_id="tokenrouter",
+        display_name="TokenRouter",
+        credential_env="TOKENROUTER_API_KEY",
+        credential_url="https://www.tokenrouter.com/",
+        credential_attr="tokenrouter_api_key",
+        default_base_url=TOKENROUTER_DEFAULT_BASE,
+        proxy_attr="tokenrouter_proxy",
     ),
     "lmstudio": ProviderDescriptor(
         provider_id="lmstudio",

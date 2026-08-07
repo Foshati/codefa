@@ -344,6 +344,20 @@ OPENAI_CHAT_PROFILES: dict[str, OpenAIChatProfile] = {
         ),
         reasoning_delta_field="reasoning",
     ),
+    "tokenrouter": OpenAIChatProfile(
+        _policy(
+            "TOKENROUTER",
+            ReasoningReplayMode.REASONING_CONTENT,
+            include_extra_body=True,
+            extra_body_validator=validate_extra_body_does_not_override_canonical_fields,
+            default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+        ),
+        NamedEffortReasoning(
+            _LOW_MEDIUM_HIGH,
+            disabled_value="none",
+            enabled_value="high",
+        ),
+    ),
     "llamacpp": OpenAIChatProfile(
         _policy(
             "LLAMACPP",

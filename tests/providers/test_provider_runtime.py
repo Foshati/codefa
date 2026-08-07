@@ -102,6 +102,8 @@ def _make_settings(**overrides):
     mock.cerebras_api_key = ""
     mock.cerebras_proxy = ""
     mock.ollama_cloud_proxy = ""
+    mock.tokenrouter_api_key = "test_tokenrouter_key"
+    mock.tokenrouter_proxy = ""
     mock.provider_rate_limit = 40
     mock.provider_rate_window = 60
     mock.provider_max_concurrency = 5
@@ -440,6 +442,7 @@ def test_create_provider_instantiates_each_builtin():
         "groq": OpenAIChatProvider,
         "sambanova": OpenAIChatProvider,
         "cerebras": OpenAIChatProvider,
+        "tokenrouter": OpenAIChatProvider,
     }
     sentinel_admission = MagicMock(spec=ProviderAdmissionController)
 
