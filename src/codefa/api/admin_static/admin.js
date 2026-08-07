@@ -453,9 +453,16 @@ function inputForField(field) {
   input.type = field.type === "number" ? "number" : "text";
   if (field.type === "secret") {
     input.type = "password";
-    input.placeholder = field.configured
-      ? "Configured - enter a new value to replace"
-      : "Not configured";
+    const isProxy = (field.key || "").endsWith("_PROXY");
+    if (isProxy) {
+      input.placeholder = field.configured
+        ? "Configured - enter new proxy or leave empty"
+        : "Optional - leave empty for direct connection";
+    } else {
+      input.placeholder = field.configured
+        ? "Configured - enter a new API Key to replace"
+        : "Not configured - enter API Key";
+    }
     input.value = "";
     input.autocomplete = "off";
   } else {

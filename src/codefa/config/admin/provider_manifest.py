@@ -237,12 +237,16 @@ def _proxy_field_specs() -> tuple[dict[str, Any], ...]:
         specs.append(
             {
                 "key": _settings_env_key(descriptor.proxy_attr),
-                "label": f"{descriptor.display_name} Proxy",
+                "label": f"{descriptor.display_name} Proxy (Optional)",
                 "section_id": "providers",
                 "field_type": "secret",
                 "settings_attr": descriptor.proxy_attr,
                 "secret": True,
                 "advanced": True,
+                "description": (
+                    f"Optional HTTP/SOCKS5 proxy URL for {descriptor.display_name} "
+                    "(leave empty for direct connection)."
+                ),
             }
         )
     return tuple(specs)
