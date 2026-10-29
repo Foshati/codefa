@@ -44,7 +44,17 @@ _STRICT_EGRESS = WebFetchEgressPolicy(
     allow_private_network_targets=False,
     allowed_schemes=frozenset({"http", "https"}),
 )
-_PROVIDER_IDS = tuple(PROVIDER_CATALOG)
+# Providers that need CODEFA's local server-tool handler (non-native upstreams).
+_PROVIDER_IDS = tuple(
+    provider_id
+    for provider_id, descriptor in PROVIDER_CATALOG.items()
+    if not descriptor.native_messages_api
+)
+_NATIVE_PROVIDER_IDS = tuple(
+    provider_id
+    for provider_id, descriptor in PROVIDER_CATALOG.items()
+    if descriptor.native_messages_api
+)
 
 
 def test_web_tool_user_agent_reports_installed_package_version() -> None:
@@ -759,3 +769,44 @@ async def test_service_rejects_listed_server_tools_for_every_provider(
     )
     with pytest.raises(InvalidRequestError, match="cannot pass listed Anthropic"):
         await service.create(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_id", _NATIVE_PROVIDER_IDS)
+async def test_native_messages_upstream_receives_listed_server_tools(
+    provider_id: str,
+) -> None:
+    """Native Anthropic upstreams run server tools themselves; CODEFA forwards them."""
+    settings = Settings()
+    provider = MagicMock()
+
+    async def stream(*_args, **_kwargs):
+        yield (
+            'event: message_start\ndata: {"type": "message_start", "message": '
+            '{"id": "msg_1", "type": "message", "role": "assistant", "model": "m", '
+            '"content": [], "stop_reason": null, "stop_sequence": null, '
+            '"usage": {"input_tokens": 1, "output_tokens": 0}}}\n\n'
+        )
+        yield 'event: message_stop\ndata: {"type": "message_stop"}\n\n'
+
+    provider.stream_response = stream
+    service = MessagesHandler(
+        settings,
+        provider_resolver=lambda _: provider,
+        model_router=FixedProviderModelRouter(settings, provider_id),
+    )
+    request = MessagesRequest(
+        model="m",
+        max_tokens=20,
+        messages=[Message(role="user", content="q")],
+        tools=[Tool(name="web_search", type="web_search_20250305")],
+        tool_choice={"type": "tool", "name": "web_search"},
+    )
+
+    response = await service.create(request)
+
+    provider.preflight_stream.assert_called_once()
+    forwarded = provider.preflight_stream.call_args.args[0]
+    assert forwarded.tools[0].type == "web_search_20250305"
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 200

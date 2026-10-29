@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3.0] - 2026-10-29
+- **Native Anthropic provider (`anthropic_api/...`)**: Uses `ANTHROPIC_API_KEY` and sends requests straight to the Claude Messages API with no conversion, so thinking signatures, prompt caching, server tools (web search/fetch), `anthropic-beta` flags, and exact usage all work. Before any output reaches the client it retries on overload, and it automatically corrects requests the API rejects (beta flags, thinking type, effort, invalid thinking signatures).
+- **OpenAI provider (`openai_api/...`)**: Uses `OPENAI_API_KEY` for GPT models over Chat Completions. It sends `max_completion_tokens`, maps reasoning effort to OpenAI's levels, and learns which parameters each model rejects (`reasoning_effort`, `temperature`, token fields) and drops them. The model list hides non-chat models, and quota exhaustion is reported instead of retried.
+- **Terminal launcher fixes**: `codefa claude` / `codefa codex` start one shared server detached from the terminal (no browser pop-up, no longer killed when another session exits, 45s startup window). Server output is saved to `~/.codefa/logs/server-console.log`, and the actual startup error is shown if the server fails. New `codefa status` and `codefa stop` commands.
+- **Admin dashboard redesign**: Providers are grouped into cloud and local with search, a configured-only filter, and status badges. The provider dialog is accessible, the log viewer is improved, and narrow windows are supported. Fixes several XSS-prone `innerHTML` uses and log-polling bugs.
+
 ## [v1.2.50] - 2026-07-30
 - **Automated GitHub Releases**: Integrated GitHub Actions release workflow and full `CHANGELOG.md` documentation.
 - **Vibrant Gradient Logo**: Updated `assets/codefa.svg` with modern electric blue (`#2563eb` -> `#38bdf8`) gradient.

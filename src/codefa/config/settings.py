@@ -20,6 +20,12 @@ from .reasoning import ReasoningPreference
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    # ==================== Anthropic (native Claude Messages API) ====================
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+
+    # ==================== OpenAI (GPT Chat Completions) ====================
+    openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+
     # ==================== OpenRouter Config ====================
     open_router_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
 
@@ -153,6 +159,8 @@ class Settings(BaseSettings):
     model_haiku: str | None = Field(default=None, validation_alias="MODEL_HAIKU")
 
     # ==================== Per-Provider Proxy ====================
+    anthropic_proxy: str = Field(default="", validation_alias="ANTHROPIC_PROXY")
+    openai_proxy: str = Field(default="", validation_alias="OPENAI_PROXY")
     nvidia_nim_proxy: str = Field(default="", validation_alias="NVIDIA_NIM_PROXY")
     open_router_proxy: str = Field(default="", validation_alias="OPENROUTER_PROXY")
     mistral_proxy: str = Field(default="", validation_alias="MISTRAL_PROXY")

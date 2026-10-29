@@ -30,12 +30,12 @@ def combined(argv: Sequence[str] | None = None) -> None:
 
 
 def _run_combined(argv: Sequence[str] | None = None) -> None:
-    import os
-    import subprocess
-    import time
-
-    from codefa.cli.launchers.common import preflight_proxy
-    from codefa.config.server_urls import local_proxy_root_url
+    from codefa.cli.background_server import (
+        BackgroundServerError,
+        ensure_background_server,
+        stop_background_server,
+    )
+    from codefa.config.server_urls import local_admin_url, local_proxy_root_url
     from codefa.config.settings import get_settings
 
     if _print_version_if_requested(argv):
@@ -50,30 +50,23 @@ def _run_combined(argv: Sequence[str] | None = None) -> None:
 
         run_server()
         return
+    if target_client == "stop":
+        print(stop_background_server())
+        return
 
     settings = get_settings()
     proxy_root_url = local_proxy_root_url(settings)
+    if target_client == "status":
+        _print_server_status(proxy_root_url, local_admin_url(settings))
+        return
 
-    server_process = None
-    if preflight_proxy(proxy_root_url) is not None:
-        print("Starting codefa-server in the background...", flush=True)
-        server_process = subprocess.Popen(
-            [sys.executable, "-c", "from codefa.cli.entrypoints import serve; serve()"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=os.environ.copy(),
+    try:
+        started = ensure_background_server(
+            proxy_root_url, admin_url=local_admin_url(settings)
         )
-
-        deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline:
-            if preflight_proxy(proxy_root_url) is None:
-                break
-            time.sleep(0.1)
-        else:
-            print("Error: codefa-server failed to start in time.", file=sys.stderr)
-            if server_process.poll() is None:
-                server_process.terminate()
-            raise SystemExit(1)
+    except BackgroundServerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
     try:
         if target_client == "codex":
@@ -85,12 +78,31 @@ def _run_combined(argv: Sequence[str] | None = None) -> None:
 
             launch_claude(remaining_args)
     finally:
-        if server_process is not None and server_process.poll() is None:
-            server_process.terminate()
-            try:
-                server_process.wait(timeout=2.0)
-            except subprocess.TimeoutExpired:
-                server_process.kill()
+        if started:
+            # The server is shared by concurrent sessions, so it keeps running.
+            print(
+                "codefa server is still running in the background "
+                "(stop it with: codefa stop).",
+                file=sys.stderr,
+            )
+
+
+def _print_server_status(proxy_root_url: str, admin_url: str) -> None:
+    from codefa.cli.background_server import background_server_status
+    from codefa.config.paths import background_server_console_path
+
+    status = background_server_status(proxy_root_url)
+    if status.reachable:
+        owner = (
+            f"background server, pid {status.pid}"
+            if status.pid_alive
+            else "started outside codefa auto-start"
+        )
+        print(f"codefa server: running at {proxy_root_url} ({owner})")
+        print(f"Admin UI: {admin_url}")
+    else:
+        print(f"codefa server: not reachable at {proxy_root_url}")
+    print(f"Background server log: {background_server_console_path()}")
 
 
 def _parse_combined_args(argv: Sequence[str] | None) -> tuple[str | None, list[str]]:
@@ -124,6 +136,26 @@ def _parse_combined_args(argv: Sequence[str] | None) -> tuple[str | None, list[s
             "-s",
         ):
             target_client = "server"
+        elif (
+            target_client is None
+            and not remaining
+            and arg_lower
+            in (
+                "stop",
+                "--stop",
+            )
+        ):
+            target_client = "stop"
+        elif (
+            target_client is None
+            and not remaining
+            and arg_lower
+            in (
+                "status",
+                "--status",
+            )
+        ):
+            target_client = "status"
         else:
             remaining.append(arg)
 

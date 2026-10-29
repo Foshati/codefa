@@ -98,6 +98,17 @@ async def _create_responses_response(
     return await bind_response_lifetime(response, lease.release)
 
 
+def _anthropic_betas(request: Request) -> list[str] | None:
+    """Return client ``anthropic-beta`` flags for native Anthropic upstreams."""
+    values = [
+        beta.strip()
+        for header in request.headers.getlist("anthropic-beta")
+        for beta in header.split(",")
+        if beta.strip()
+    ]
+    return values or None
+
+
 def _probe_response(allow: str) -> Response:
     return Response(status_code=204, headers={"Allow": allow})
 
@@ -110,6 +121,7 @@ async def create_message(
     _auth=Depends(require_proxy_auth),
 ):
     """Create a message (JSON by default; stream=true returns Anthropic SSE)."""
+    request_data.betas = _anthropic_betas(request) or request_data.betas
     return await _create_messages_response(
         services,
         request_data,

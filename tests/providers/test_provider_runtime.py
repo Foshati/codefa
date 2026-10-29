@@ -21,6 +21,7 @@ from codefa.config.provider_catalog import (
     ZAI_DEFAULT_BASE,
 )
 from codefa.providers.admission import ProviderAdmissionController
+from codefa.providers.anthropic import AnthropicProvider
 from codefa.providers.cloudflare import CloudflareProvider
 from codefa.providers.deepseek import DeepSeekProvider
 from codefa.providers.gemini import GeminiProvider
@@ -33,6 +34,7 @@ from codefa.providers.openai_chat import (
     OPENAI_CHAT_PROFILES,
     OpenAIChatProvider,
 )
+from codefa.providers.openai_platform import OpenAIProvider
 from codefa.providers.runtime import (
     ProviderRuntime,
     build_provider_config,
@@ -104,6 +106,10 @@ def _make_settings(**overrides):
     mock.ollama_cloud_proxy = ""
     mock.tokenrouter_api_key = "test_tokenrouter_key"
     mock.tokenrouter_proxy = ""
+    mock.anthropic_api_key = "test_anthropic_key"
+    mock.anthropic_proxy = ""
+    mock.openai_api_key = "test_openai_key"
+    mock.openai_proxy = ""
     mock.provider_rate_limit = 40
     mock.provider_rate_window = 60
     mock.provider_max_concurrency = 5
@@ -443,6 +449,8 @@ def test_create_provider_instantiates_each_builtin():
         "sambanova": OpenAIChatProvider,
         "cerebras": OpenAIChatProvider,
         "tokenrouter": OpenAIChatProvider,
+        "anthropic_api": AnthropicProvider,
+        "openai_api": OpenAIProvider,
     }
     sentinel_admission = MagicMock(spec=ProviderAdmissionController)
 

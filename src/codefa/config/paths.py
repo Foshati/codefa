@@ -9,6 +9,8 @@ LEGACY_XDG_CONFIG_DIRNAME = ".config"
 MESSAGING_STATE_DIRNAME = "agent_workspace"
 CODEFA_LOGS_DIRNAME = "logs"
 SERVER_LOG_FILENAME = "server.log"
+BACKGROUND_SERVER_CONSOLE_FILENAME = "server-console.log"
+BACKGROUND_SERVER_PID_FILENAME = "server.pid"
 CODEX_MODEL_CATALOG_FILENAME = "codex-model-catalog.json"
 
 
@@ -44,6 +46,18 @@ def server_log_path() -> Path:
     """Return the canonical server log path."""
 
     return config_dir_path() / CODEFA_LOGS_DIRNAME / SERVER_LOG_FILENAME
+
+
+def background_server_console_path() -> Path:
+    """Return the stdout/stderr capture of the auto-started background server."""
+
+    return config_dir_path() / CODEFA_LOGS_DIRNAME / BACKGROUND_SERVER_CONSOLE_FILENAME
+
+
+def background_server_pid_path() -> Path:
+    """Return the pid file of the auto-started background server."""
+
+    return config_dir_path() / BACKGROUND_SERVER_PID_FILENAME
 
 
 def codex_model_catalog_path() -> Path:

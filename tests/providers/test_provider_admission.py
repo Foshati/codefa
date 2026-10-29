@@ -593,8 +593,8 @@ async def test_non_retryable_probe_closes_episode_and_only_rejects_leader() -> N
 async def test_probe_exhaustion_fails_waiters_and_opens_after_cooldown() -> None:
     controller = _controller(
         max_attempts=2,
-        base_delay=0.02,
-        max_delay=0.02,
+        base_delay=0.1,
+        max_delay=0.1,
     )
     leader_session = controller.new_retry_session()
     follower_session = controller.new_retry_session()
@@ -619,7 +619,7 @@ async def test_probe_exhaustion_fails_waiters_and_opens_after_cooldown() -> None
     with pytest.raises(ProviderRecoveryExhausted):
         await controller.open_attempt(controller.new_retry_session())
 
-    await asyncio.sleep(0.03)
+    await asyncio.sleep(0.12)
     recovery = await controller.open_attempt(controller.new_retry_session())
     await recovery.succeeded()
     await recovery.aclose()

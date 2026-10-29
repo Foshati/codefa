@@ -5,6 +5,9 @@ const state = {
   modelOptions: [],
   modelComboboxes: new Set(),
   activeView: "providers",
+  providerFilter: { query: "", configuredOnly: false },
+  busy: false,
+  restarting: false,
 };
 
 const MASKED_SECRET = "********";
@@ -13,6 +16,7 @@ const VIEW_GROUPS = [
     id: "providers",
     label: "Providers",
     title: "Providers",
+    subtitle: "Connect cloud APIs and local model servers.",
     sections: ["providers", "runtime"],
     containerId: "providersSections",
   },
@@ -20,6 +24,7 @@ const VIEW_GROUPS = [
     id: "model_config",
     label: "Model Config",
     title: "Model Config",
+    subtitle: "Route Claude Code / Codex model slots to provider models.",
     sections: ["models", "reasoning", "web_tools"],
     containerId: "modelConfigSections",
   },
@@ -27,6 +32,7 @@ const VIEW_GROUPS = [
     id: "messaging",
     label: "Messaging",
     title: "Messaging",
+    subtitle: "Chat platform bots, sessions, and voice notes.",
     sections: ["messaging", "voice"],
     containerId: "messagingSections",
   },
@@ -34,6 +40,7 @@ const VIEW_GROUPS = [
     id: "logs",
     label: "Logs",
     title: "Server Logs",
+    subtitle: "Inspect recent server activity.",
     sections: [],
     containerId: "logsSections",
   },
@@ -41,12 +48,75 @@ const VIEW_GROUPS = [
     id: "settings",
     label: "Settings",
     title: "Settings",
+    subtitle: "Preferences for this admin dashboard.",
     sections: [],
     containerId: "settingsSections",
   },
 ];
 
+const PROVIDER_GROUPS = [
+  {
+    kind: "remote",
+    title: "Cloud",
+    description: "Hosted APIs authenticated with a key or token",
+  },
+  {
+    kind: "local",
+    title: "Local",
+    description: "Model servers running on this machine",
+  },
+];
+
+const THEME_STORAGE_KEY = "codefa_theme";
+const THEME_MODES = ["dark", "light", "system"];
+const SVG_NS = "http://www.w3.org/2000/svg";
+const LOGS_POLL_MS = 3000;
+
 const byId = (id) => document.getElementById(id);
+const prefersReducedMotion = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+  );
+}
+
+// Renders server-provided description text without innerHTML. Supports the two
+// markup forms used in field descriptions: [label](https://url) and `code`.
+// Links are only created for http(s) URLs; anything else stays plain text.
+function renderRichText(target, text) {
+  target.replaceChildren();
+  const source = String(text ?? "");
+  const pattern = /\[([^\]]+)\]\(([^)\s]+)\)|`{1,2}([^`]+)`{1,2}/g;
+  let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    if (match.index > cursor) {
+      target.append(source.slice(cursor, match.index));
+    }
+    const [raw, linkText, url, code] = match;
+    if (code !== undefined) {
+      const codeEl = document.createElement("code");
+      codeEl.textContent = code;
+      target.append(codeEl);
+    } else if (/^https?:\/\//i.test(url)) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = linkText;
+      target.append(link);
+    } else {
+      target.append(raw);
+    }
+    cursor = match.index + raw.length;
+  }
+  if (cursor < source.length) {
+    target.append(source.slice(cursor));
+  }
+}
 
 function sourceLabel(source) {
   const labels = {
@@ -74,21 +144,48 @@ function sourceText(field) {
 
 function statusClass(status) {
   if (["configured", "reachable", "running"].includes(status)) return "ok";
-  if (["missing_key", "missing_config", "missing_url", "unknown"].includes(status)) return "warn";
+  if (["missing_key", "missing_config", "missing_url", "invalid_url", "unknown"].includes(status))
+    return "warn";
   if (["offline", "error"].includes(status)) return "error";
   return "neutral";
 }
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new Error(await responseErrorMessage(response));
   }
   return response.json();
+}
+
+async function responseErrorMessage(response) {
+  const status = `${response.status} ${response.statusText}`.trim();
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === "string" && body.detail) {
+      return `${status}: ${body.detail}`;
+    }
+  } catch {
+    // Non-JSON error bodies fall back to the HTTP status line.
+  }
+  return status;
+}
+
+// ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+
+function readThemeMode() {
+  try {
+    const mode = localStorage.getItem(THEME_STORAGE_KEY);
+    return THEME_MODES.includes(mode) ? mode : "dark";
+  } catch {
+    return "dark";
+  }
 }
 
 function getEffectiveTheme(mode) {
@@ -99,90 +196,90 @@ function getEffectiveTheme(mode) {
 }
 
 function setTheme(mode) {
-  const effective = getEffectiveTheme(mode);
-  document.documentElement.setAttribute("data-theme", effective);
-  localStorage.setItem("codefa_theme", mode);
+  document.documentElement.setAttribute("data-theme", getEffectiveTheme(mode));
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    // Storage can be unavailable (e.g. privacy mode); the theme still applies.
+  }
 
   document.querySelectorAll(".theme-card").forEach((card) => {
-    const cardMode = card.dataset.themeMode;
-    const check = card.querySelector(".theme-check");
-    if (cardMode === mode) {
-      card.classList.add("active");
-      if (check) check.style.opacity = "1";
-    } else {
-      card.classList.remove("active");
-      if (check) check.style.opacity = "0";
-    }
+    const selected = card.dataset.themeMode === mode;
+    card.classList.toggle("active", selected);
+    card.setAttribute("aria-pressed", String(selected));
   });
-
-  if (state.config && state.config.provider_status) {
-    renderProviders(state.config.provider_status);
-  }
 }
 
 function initTheme() {
-  const savedMode = localStorage.getItem("codefa_theme") || "dark";
-  setTheme(savedMode);
-
-  byId("themeToggleBtn")?.addEventListener("click", () => {
-    const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
-    const newMode = currentTheme === "dark" ? "light" : "dark";
-    setTheme(newMode);
-  });
+  setTheme(readThemeMode());
 
   document.querySelectorAll(".theme-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const mode = card.dataset.themeMode;
-      setTheme(mode);
-    });
+    card.addEventListener("click", () => setTheme(card.dataset.themeMode));
   });
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    const savedMode = localStorage.getItem("codefa_theme") || "dark";
-    if (savedMode === "system") {
+    if (readThemeMode() === "system") {
       setTheme("system");
     }
   });
 }
 
+// ---------------------------------------------------------------------------
+// Loading & navigation
+// ---------------------------------------------------------------------------
+
 async function load() {
-  initTheme();
   showMessage("Loading admin config");
   const config = await api("/admin/api/config");
   state.config = config;
   state.fields = new Map(config.fields.map((field) => [field.key, field]));
+  state.localStatus.clear();
   renderNav();
   renderProviders(config.provider_status);
   renderSections(config.sections, config.fields);
-  byId("configPath").textContent = config.paths.managed;
+  const configPath = byId("configPath");
+  configPath.textContent = config.paths.managed;
+  configPath.title = config.paths.managed;
   await hydrateModelOptions();
   await validate(false);
-  await refreshLocalStatus();
+  let localStatusError = null;
+  try {
+    await refreshLocalStatus();
+  } catch (error) {
+    // Local probes are informational; they must not block the rest of the UI.
+    localStatusError = error;
+  }
   updateDirtyState();
-  showMessage("");
+  if (localStatusError) {
+    showMessage(`Could not check local providers: ${localStatusError.message}`, "warn");
+  } else {
+    showMessage("");
+  }
 }
 
 const NAV_ICONS = {
-  providers: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="2"></rect><rect x="14" y="2" width="8" height="8" rx="2"></rect><rect x="2" y="14" width="8" height="8" rx="2"></rect><rect x="14" y="14" width="8" height="8" rx="2"></rect></svg>`,
-  model_config: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>`,
-  messaging: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
-  logs: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`,
-  settings: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
+  providers: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="2"></rect><rect x="14" y="2" width="8" height="8" rx="2"></rect><rect x="2" y="14" width="8" height="8" rx="2"></rect><rect x="14" y="14" width="8" height="8" rx="2"></rect></svg>`,
+  model_config: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>`,
+  messaging: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
+  logs: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`,
+  settings: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
 };
+
+const GEAR_ICON = NAV_ICONS.settings;
 
 function renderNav() {
   const nav = byId("sectionNav");
-  nav.innerHTML = "";
-  VIEW_GROUPS.forEach((view, index) => {
+  nav.replaceChildren();
+  VIEW_GROUPS.forEach((view) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `nav-link${index === 0 ? " active" : ""}`;
+    button.className = "nav-link";
     button.dataset.view = view.id;
-    const icon = NAV_ICONS[view.id] || "";
-    button.innerHTML = `${icon} <span>${view.label}</span>`;
-    if (index === 0) {
-      button.setAttribute("aria-current", "page");
-    }
+    button.title = view.label;
+    button.innerHTML = NAV_ICONS[view.id] || "";
+    const label = document.createElement("span");
+    label.textContent = view.label;
+    button.appendChild(label);
     button.addEventListener("click", () => {
       setActiveView(view.id, { scroll: true });
     });
@@ -196,6 +293,7 @@ function setActiveView(viewId, { scroll = false } = {}) {
     VIEW_GROUPS.find((view) => view.id === viewId) || VIEW_GROUPS[0];
   state.activeView = activeView.id;
   byId("pageTitle").textContent = activeView.title;
+  byId("pageSubtitle").textContent = activeView.subtitle || "";
 
   document.querySelectorAll(".nav-link").forEach((link) => {
     const selected = link.dataset.view === activeView.id;
@@ -214,7 +312,7 @@ function setActiveView(viewId, { scroll = false } = {}) {
   });
 
   if (scroll) {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }
 
   if (activeView.id === "logs") {
@@ -225,78 +323,168 @@ function setActiveView(viewId, { scroll = false } = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Provider cards
+// ---------------------------------------------------------------------------
+
 function renderProviders(providerStatus) {
-  const grid = byId("providerGrid");
-  grid.innerHTML = "";
-  providerStatus.forEach((provider) => {
-    const card = document.createElement("article");
-    card.className = "provider-card";
-    card.dataset.provider = provider.provider_id;
-    card.style.cursor = "pointer";
+  const container = byId("providerGrid");
+  container.replaceChildren();
+  PROVIDER_GROUPS.forEach((group) => {
+    const providers = providerStatus.filter(
+      (provider) => (provider.kind === "local" ? "local" : "remote") === group.kind,
+    );
+    if (providers.length === 0) return;
 
-    const iconDiv = document.createElement("div");
-    iconDiv.innerHTML = getProviderIcon(provider.provider_id, provider.display_name);
-    
-    const contentDiv = document.createElement("div");
-    contentDiv.style.flex = "1";
-    contentDiv.style.display = "flex";
-    contentDiv.style.flexDirection = "column";
-    contentDiv.style.gap = "4px";
+    const section = document.createElement("section");
+    section.className = "provider-group";
+    section.dataset.kind = group.kind;
+    const headingId = `provider-group-${group.kind}`;
+    section.setAttribute("aria-labelledby", headingId);
 
-    const title = document.createElement("div");
-    title.className = "provider-title";
-    title.style.display = "flex";
-    title.style.alignItems = "center";
-    title.style.gap = "8px";
-    title.style.margin = "0";
-    title.innerHTML = `<strong>${provider.display_name || provider.provider_id}</strong>`;
+    const header = document.createElement("div");
+    header.className = "provider-group-header";
+    const heading = document.createElement("h4");
+    heading.id = headingId;
+    heading.textContent = group.title;
+    const count = document.createElement("span");
+    count.className = "provider-group-count";
+    const description = document.createElement("span");
+    description.className = "provider-group-description";
+    description.textContent = group.description;
+    header.append(heading, count, description);
 
-    const pill = document.createElement("span");
-    pill.className = `status-pill ${statusClass(provider.status)}`;
-    pill.textContent = provider.label;
-    title.appendChild(pill);
+    const grid = document.createElement("div");
+    grid.className = "provider-grid";
+    grid.setAttribute("role", "list");
+    providers.forEach((provider) => grid.appendChild(renderProviderCard(provider)));
 
-    const meta = document.createElement("div");
-    meta.className = "provider-meta";
-    meta.textContent =
-      provider.kind === "local"
-        ? provider.base_url || "No local URL configured"
-        : provider.configuration;
-
-    contentDiv.append(title, meta);
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "provider-edit-btn";
-    editBtn.ariaLabel = `Configure ${provider.display_name}`;
-    editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
-
-    card.append(iconDiv, contentDiv, editBtn);
-    
-    card.addEventListener("click", () => {
-      openProviderModal(provider.provider_id);
-    });
-
-    grid.appendChild(card);
+    section.append(header, grid);
+    container.appendChild(section);
   });
+  applyProviderFilter();
+}
+
+function renderProviderCard(provider) {
+  const name = provider.display_name || provider.provider_id;
+  const card = document.createElement("article");
+  card.className = "provider-card";
+  card.dataset.provider = provider.provider_id;
+  card.dataset.kind = provider.kind;
+  card.setAttribute("role", "listitem");
+
+  const body = document.createElement("div");
+  body.className = "provider-card-body";
+
+  const title = document.createElement("div");
+  title.className = "provider-title";
+  const titleText = document.createElement("strong");
+  titleText.textContent = name;
+  titleText.title = name;
+  title.appendChild(titleText);
+
+  const meta = document.createElement("div");
+  meta.className = "provider-meta";
+  meta.textContent =
+    provider.kind === "local"
+      ? provider.base_url || "No local URL configured"
+      : provider.configuration;
+  meta.title = meta.textContent;
+
+  const badges = document.createElement("div");
+  badges.className = "provider-badges";
+  const pill = document.createElement("span");
+  pill.className = "status-pill";
+  const kindTag = document.createElement("span");
+  kindTag.className = "kind-tag";
+  kindTag.textContent = provider.kind === "local" ? "Local" : "Cloud";
+  badges.append(pill, kindTag);
+
+  body.append(title, meta, badges);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "provider-edit-btn";
+  editBtn.setAttribute("aria-label", `Configure ${name}`);
+  editBtn.title = `Configure ${name}`;
+  editBtn.innerHTML = GEAR_ICON;
+
+  card.append(getProviderIcon(provider.provider_id, provider.display_name), body, editBtn);
+  setCardStatus(card, provider.status, provider.label);
+
+  card.addEventListener("click", () => {
+    openProviderModal(provider.provider_id, editBtn);
+  });
+  return card;
+}
+
+function findProviderCard(providerId) {
+  return document.querySelector(
+    `#providerGrid .provider-card[data-provider="${CSS.escape(providerId)}"]`,
+  );
+}
+
+function setCardStatus(card, status, label) {
+  const tone = statusClass(status);
+  const pill = card.querySelector(".status-pill");
+  pill.className = `status-pill ${tone}`;
+  pill.textContent = label || "";
+  card.dataset.status = status || "";
+  card.dataset.tone = tone;
 }
 
 function updateProviderCard(providerId, status, label, metaText) {
-  const card = document.querySelector(`[data-provider="${providerId}"]`);
+  const card = findProviderCard(providerId);
   if (!card) return;
-  const pill = card.querySelector(".status-pill");
-  pill.className = `status-pill ${statusClass(status)}`;
-  pill.textContent = label;
+  setCardStatus(card, status, label);
   if (metaText) {
-    card.querySelector(".provider-meta").textContent = metaText;
+    const meta = card.querySelector(".provider-meta");
+    meta.textContent = metaText;
+    meta.title = metaText;
   }
+  applyProviderFilter();
 }
+
+function applyProviderFilter() {
+  const query = state.providerFilter.query.trim().toLocaleLowerCase();
+  const { configuredOnly } = state.providerFilter;
+  let total = 0;
+  let visible = 0;
+  let ready = 0;
+
+  document.querySelectorAll("#providerGrid .provider-group").forEach((group) => {
+    const cards = Array.from(group.querySelectorAll(".provider-card"));
+    let groupVisible = 0;
+    cards.forEach((card) => {
+      const isReady = card.dataset.tone === "ok";
+      const haystack = `${card.dataset.provider} ${card.textContent}`.toLocaleLowerCase();
+      const matches = (!query || haystack.includes(query)) && (!configuredOnly || isReady);
+      card.hidden = !matches;
+      if (matches) groupVisible += 1;
+      if (isReady) ready += 1;
+    });
+    group.hidden = groupVisible === 0;
+    group.querySelector(".provider-group-count").textContent =
+      groupVisible === cards.length ? String(cards.length) : `${groupVisible} of ${cards.length}`;
+    total += cards.length;
+    visible += groupVisible;
+  });
+
+  byId("providerEmpty").hidden = total === 0 || visible > 0;
+  byId("providerSummary").textContent = total
+    ? `${ready} of ${total} provider${total === 1 ? "" : "s"} configured or reachable`
+    : "";
+}
+
+// ---------------------------------------------------------------------------
+// Config sections & fields
+// ---------------------------------------------------------------------------
 
 function renderSections(sections, fields) {
   state.modelComboboxes.clear();
   VIEW_GROUPS.forEach((view) => {
     if (view.id !== "logs" && view.id !== "settings") {
-      byId(view.containerId).innerHTML = "";
+      byId(view.containerId).replaceChildren();
     }
   });
 
@@ -317,7 +505,7 @@ function renderSections(sections, fields) {
 
       if (sectionId === "providers") {
         const hiddenContainer = byId("hiddenFieldsContainer");
-        hiddenContainer.innerHTML = "";
+        hiddenContainer.replaceChildren();
         sectionFields.forEach((field) => {
           hiddenContainer.appendChild(renderField(field));
         });
@@ -330,11 +518,17 @@ function renderSections(sections, fields) {
 
       const heading = document.createElement("div");
       heading.className = "section-heading";
-      heading.innerHTML = `<div><h3>${section.label}</h3><p>${section.description}</p></div>`;
+      const headingText = document.createElement("div");
+      const title = document.createElement("h3");
+      title.textContent = section.label;
+      const description = document.createElement("p");
+      description.textContent = section.description;
+      headingText.append(title, description);
+      heading.appendChild(headingText);
       if (section.id === "models") {
         const refreshButton = document.createElement("button");
         refreshButton.type = "button";
-        refreshButton.className = "secondary-button";
+        refreshButton.className = "secondary-button button-sm";
         refreshButton.textContent = "Refresh models";
         refreshButton.addEventListener("click", () => refreshModelOptions(refreshButton));
         heading.appendChild(refreshButton);
@@ -343,6 +537,7 @@ function renderSections(sections, fields) {
 
       const grid = document.createElement("div");
       grid.className = "field-grid";
+      grid.id = `section-${section.id}-fields`;
       sectionFields.forEach((field) => {
         grid.appendChild(renderField(field));
       });
@@ -351,11 +546,14 @@ function renderSections(sections, fields) {
       if (sectionFields.some((field) => field.advanced)) {
         const toggle = document.createElement("button");
         toggle.type = "button";
-        toggle.className = "ghost-button advanced-toggle";
+        toggle.className = "ghost-button button-sm advanced-toggle";
         toggle.textContent = "Show advanced";
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-controls", grid.id);
         toggle.addEventListener("click", () => {
           const showing = sectionEl.classList.toggle("show-advanced");
           toggle.textContent = showing ? "Hide advanced" : "Show advanced";
+          toggle.setAttribute("aria-expanded", String(showing));
         });
         sectionEl.appendChild(toggle);
       }
@@ -387,7 +585,11 @@ function renderField(field) {
   const input = inputForField(field);
   input.id = `field-${field.key}`;
   input.dataset.key = field.key;
-  input.dataset.original = field.value || "";
+  // Checkboxes normalize their own original value ("true"/"false"); using the raw
+  // env value (e.g. "True", "1", "") would report a phantom unsaved change.
+  if (input.dataset.original === undefined) {
+    input.dataset.original = field.value || "";
+  }
   input.dataset.secret = field.secret ? "true" : "false";
   input.dataset.configured = field.configured ? "true" : "false";
   input.dataset.fieldType = field.type;
@@ -411,7 +613,9 @@ function renderField(field) {
   if (field.description) {
     const description = document.createElement("div");
     description.className = "field-description";
-    description.textContent = field.description;
+    description.id = `field-${field.key}-description`;
+    renderRichText(description, field.description);
+    input.setAttribute("aria-describedby", description.id);
     wrapper.appendChild(description);
   }
   return wrapper;
@@ -446,6 +650,7 @@ function inputForField(field) {
     input.type = "text";
     input.value = field.value || (field.type === "optional_model" ? "None" : "");
     input.autocomplete = "off";
+    input.spellcheck = false;
     return input;
   }
 
@@ -562,7 +767,7 @@ class ModelCombobox {
           value.toLocaleLowerCase().includes(normalizedQuery),
         )
       : this.values;
-    this.listbox.innerHTML = "";
+    this.listbox.replaceChildren();
 
     if (values.length === 0) {
       const empty = document.createElement("div");
@@ -651,6 +856,10 @@ function option(value, label) {
   return optionEl;
 }
 
+// ---------------------------------------------------------------------------
+// Dirty state, validate & apply
+// ---------------------------------------------------------------------------
+
 function readFieldValue(input) {
   if (input.type === "checkbox") return input.checked ? "true" : "false";
   if (
@@ -681,7 +890,32 @@ function updateDirtyState() {
   const count = Object.keys(changedValues()).length;
   byId("dirtyState").textContent =
     count === 0 ? "No changes" : `${count} unsaved change${count === 1 ? "" : "s"}`;
-  byId("applyButton").disabled = count === 0;
+  document.querySelector(".action-bar").classList.toggle("is-dirty", count > 0);
+  byId("applyButton").disabled = count === 0 || state.busy || state.restarting;
+  return count;
+}
+
+// Serializes validate/apply so double clicks cannot submit overlapping requests,
+// and surfaces failures instead of leaving unhandled promise rejections.
+async function runAction(action) {
+  if (state.busy) return undefined;
+  setBusy(true);
+  try {
+    return await action();
+  } catch (error) {
+    showMessage(error.message || String(error), "error");
+    return undefined;
+  } finally {
+    setBusy(false);
+  }
+}
+
+function setBusy(busy) {
+  state.busy = busy;
+  byId("validateButton").disabled = busy;
+  byId("modalSaveBtn").disabled = busy;
+  document.querySelector(".action-bar").setAttribute("aria-busy", String(busy));
+  updateDirtyState();
 }
 
 async function validate(showResult = true) {
@@ -695,11 +929,15 @@ async function validate(showResult = true) {
   return result;
 }
 
+function validationErrorText(result) {
+  return (result.errors || []).join("; ") || "Configuration is invalid";
+}
+
 function showValidationResult(result) {
   if (result.valid) {
     showMessage("Config shape is valid", "ok");
   } else {
-    showMessage(result.errors.join("; "), "error");
+    showMessage(validationErrorText(result), "error");
   }
 }
 
@@ -710,16 +948,17 @@ async function apply() {
   });
   if (!result.applied) {
     showValidationResult(result);
-    return;
+    return result;
   }
   const restart = result.restart || {};
   if (restart.required && restart.automatic) {
+    state.restarting = true;
     showMessage("Applied. Restarting server...", "ok");
     byId("applyButton").disabled = true;
     setTimeout(() => {
       window.location.href = restart.admin_url || "/admin";
     }, 1600);
-    return;
+    return result;
   }
   const pending = restart.required ? restart.fields || [] : result.pending_fields || [];
   await load();
@@ -729,6 +968,7 @@ async function apply() {
       : "Applied",
     "ok",
   );
+  return result;
 }
 
 async function refreshLocalStatus() {
@@ -742,34 +982,9 @@ async function refreshLocalStatus() {
   });
 }
 
-async function testProvider(providerId, button) {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = "Testing";
-  try {
-    const result = await api(`/admin/api/providers/${providerId}/test`, {
-      method: "POST",
-      body: "{}",
-    });
-    if (result.ok) {
-      updateProviderCard(
-        providerId,
-        "reachable",
-        `${result.models.length} models`,
-        result.models.slice(0, 3).join(", ") || "No models returned",
-      );
-      setModelOptions([
-        ...state.modelOptions,
-        ...result.models.map((model) => `${providerId}/${model}`),
-      ]);
-    } else {
-      updateProviderCard(providerId, "offline", result.error_type, result.error_type);
-    }
-  } finally {
-    button.disabled = false;
-    button.textContent = original;
-  }
-}
+// ---------------------------------------------------------------------------
+// Model options
+// ---------------------------------------------------------------------------
 
 async function hydrateModelOptions() {
   try {
@@ -790,7 +1005,8 @@ async function loadModelOptions(refresh = false) {
 async function refreshModelOptions(button) {
   const original = button.textContent;
   button.disabled = true;
-  button.textContent = "Refreshing";
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Refreshing...";
   try {
     const result = await loadModelOptions(true);
     const failedProviders = result.failed_providers || [];
@@ -807,6 +1023,7 @@ async function refreshModelOptions(button) {
     showMessage(`Could not refresh models: ${error.message}`, "error");
   } finally {
     button.disabled = false;
+    button.removeAttribute("aria-busy");
     button.textContent = original;
   }
 }
@@ -820,7 +1037,7 @@ function providerDisplayName(providerId) {
 
 function setModelOptions(models) {
   state.modelOptions = Array.from(
-    new Set(models.filter((model) => typeof model === "string" && model.trim())),
+    new Set((models || []).filter((model) => typeof model === "string" && model.trim())),
   ).sort((left, right) => left.localeCompare(right));
   state.modelComboboxes.forEach((combobox) => {
     if (combobox.isOpen) combobox.render(combobox.query);
@@ -833,137 +1050,175 @@ function showMessage(message, kind = "") {
   area.className = `message-area ${kind}`.trim();
 }
 
-byId("validateButton").addEventListener("click", () => validate(true));
-byId("applyButton").addEventListener("click", apply);
-document.addEventListener("pointerdown", (event) => {
-  state.modelComboboxes.forEach((combobox) => {
-    if (combobox.isOpen && !combobox.element.contains(event.target)) combobox.close();
-  });
-});
+// ---------------------------------------------------------------------------
+// Logs
+// ---------------------------------------------------------------------------
 
-let logsIntervalId = null;
-let currentLogLevelFilter = "ALL";
-let currentLogSearchQuery = "";
-let clearedLogsCount = 0;
-let lastLogsLength = 0;
+const LOG_SKIP_KEYS = new Set(["time", "level", "message", "module", "function", "line"]);
+
+const logs = {
+  intervalId: null,
+  entries: [],
+  levelFilter: "ALL",
+  query: "",
+  // Last entry visible when "Clear View" was pressed. The server returns a sliding
+  // window of recent lines, so clearing must be anchored to an entry, not an index.
+  clearMarker: null,
+  renderedHtml: null,
+  requestSeq: 0,
+};
+
+const logEntryKey = (entry) => JSON.stringify(entry);
 
 async function loadLogs() {
-  const container = byId("logsContainer");
-  if (!container) return;
+  const seq = ++logs.requestSeq;
   try {
     const data = await api("/admin/api/logs");
-    if (!data.logs) {
-      container.innerHTML = `<span style="color: var(--muted);">No logs available.</span>`;
-      return;
-    }
-
-    lastLogsLength = data.logs.length;
-    if (clearedLogsCount > lastLogsLength) {
-      clearedLogsCount = 0;
-    }
-
-    let logsToRender = data.logs;
-    if (clearedLogsCount > 0) {
-      logsToRender = logsToRender.slice(clearedLogsCount);
-    }
-
-    if (currentLogLevelFilter !== "ALL") {
-      logsToRender = logsToRender.filter(log => (log.level || "INFO").toUpperCase() === currentLogLevelFilter);
-    }
-
-    if (currentLogSearchQuery) {
-      const q = currentLogSearchQuery.toLowerCase();
-      logsToRender = logsToRender.filter(log => {
-        const msg = (log.message || "").toLowerCase();
-        const level = (log.level || "").toLowerCase();
-        const module = (log.module || "").toLowerCase();
-        return msg.includes(q) || level.includes(q) || module.includes(q);
-      });
-    }
-
-    if (logsToRender.length === 0) {
-      container.innerHTML = `<span style="color: var(--muted);">No matching logs found.</span>`;
-      return;
-    }
-
-    const htmlLines = logsToRender.map((log) => {
-      let time = log.time || "";
-      if (time) {
-        const tMatch = time.match(/\d{2}:\d{2}:\d{2}/);
-        if (tMatch) time = tMatch[0];
-      }
-      const level = (log.level || "INFO").toUpperCase();
-      let lvlColor = "var(--neutral)";
-      if (level === "ERROR") lvlColor = "var(--error)";
-      else if (level === "WARNING") lvlColor = "var(--warn)";
-      else if (level === "SUCCESS") lvlColor = "var(--ok)";
-      else if (level === "INFO") lvlColor = "var(--info)";
-
-      let message = log.message || "";
-      const extraFields = [];
-      const skipKeys = ["time", "level", "message", "module", "function", "line"];
-      Object.keys(log).forEach((k) => {
-        if (!skipKeys.includes(k) && log[k] !== null && log[k] !== undefined) {
-          extraFields.push(`${k}=${log[k]}`);
-        }
-      });
-      const extraStr = extraFields.length > 0 ? ` <span style="color: var(--muted); font-size: 11px;">[${extraFields.join(" ")}]</span>` : "";
-
-      return `<div style="margin-bottom: 4px; line-height: 1.4;"><span style="color: var(--muted); margin-right: 8px;">[${time}]</span><span style="color: ${lvlColor}; font-weight: bold; margin-right: 8px;">${level}</span><span>${message}</span>${extraStr}</div>`;
-    });
-
-    container.innerHTML = htmlLines.join("");
-    
-    const autoScroll = byId("autoScrollLogs");
-    if (autoScroll && autoScroll.checked) {
-      container.scrollTop = container.scrollHeight;
-    }
-  } catch (err) {
-    container.innerHTML = `<span style="color: var(--error);">Error loading logs: ${err.message}</span>`;
+    // Ignore responses that were overtaken by a newer request.
+    if (seq !== logs.requestSeq) return;
+    logs.entries = Array.isArray(data.logs) ? data.logs : [];
+    renderLogs();
+  } catch (error) {
+    if (seq !== logs.requestSeq) return;
+    showLogsNotice(`Error loading logs: ${error.message}`, true);
   }
+}
+
+function visibleLogEntries() {
+  let entries = logs.entries;
+  if (logs.clearMarker !== null) {
+    const markerIndex = entries.map(logEntryKey).lastIndexOf(logs.clearMarker);
+    // When the marker has scrolled out of the server window, every entry is newer.
+    if (markerIndex >= 0) entries = entries.slice(markerIndex + 1);
+  }
+
+  if (logs.levelFilter !== "ALL") {
+    entries = entries.filter(
+      (log) => String(log.level || "INFO").toUpperCase() === logs.levelFilter,
+    );
+  }
+
+  const query = logs.query.trim().toLowerCase();
+  if (query) {
+    entries = entries.filter((log) =>
+      [log.message, log.level, log.module].some((value) =>
+        String(value || "").toLowerCase().includes(query),
+      ),
+    );
+  }
+  return entries;
+}
+
+function formatLogTime(time) {
+  const text = String(time || "");
+  return text.match(/\d{2}:\d{2}:\d{2}/)?.[0] || text;
+}
+
+function logRowHtml(log) {
+  const level = String(log.level || "INFO").toUpperCase();
+  const levelClass = level.toLowerCase().replace(/[^a-z]/g, "");
+  const extras = Object.entries(log)
+    .filter(([key, value]) => !LOG_SKIP_KEYS.has(key) && value !== null && value !== undefined)
+    .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : value}`);
+  const extra = extras.length
+    ? `<span class="log-extra">[${escapeHtml(extras.join(" "))}]</span>`
+    : "";
+  return (
+    `<div class="log-row level-${levelClass}">` +
+    `<span class="log-time">${escapeHtml(formatLogTime(log.time))}</span>` +
+    `<span class="log-level">${escapeHtml(level)}</span>` +
+    `<span class="log-message">${escapeHtml(log.message || "")}${extra}</span>` +
+    `</div>`
+  );
+}
+
+function renderLogs() {
+  const container = byId("logsContainer");
+  const entries = visibleLogEntries();
+  updateLogsFooter(entries.length);
+
+  if (entries.length === 0) {
+    const filtered = logs.query.trim() || logs.levelFilter !== "ALL";
+    showLogsNotice(
+      logs.entries.length === 0
+        ? "No logs available."
+        : filtered
+          ? "No matching logs found."
+          : "View cleared. New log entries will appear here.",
+    );
+    return;
+  }
+
+  const html = entries.map(logRowHtml).join("");
+  // Skip identical re-renders so polling does not reset text selection or scroll.
+  if (html === logs.renderedHtml) return;
+  const previousScrollTop = container.scrollTop;
+  container.innerHTML = html;
+  logs.renderedHtml = html;
+
+  const autoScroll = byId("autoScrollLogs");
+  container.scrollTop = autoScroll && autoScroll.checked ? container.scrollHeight : previousScrollTop;
+}
+
+function showLogsNotice(message, isError = false) {
+  const notice = document.createElement("div");
+  notice.className = `logs-notice${isError ? " error" : ""}`;
+  notice.textContent = message;
+  byId("logsContainer").replaceChildren(notice);
+  logs.renderedHtml = null;
+  if (isError) updateLogsFooter(null);
+}
+
+function updateLogsFooter(visibleCount) {
+  const footer = byId("logsFooter");
+  if (visibleCount === null) {
+    footer.textContent = "";
+    return;
+  }
+  const total = logs.entries.length;
+  footer.textContent = `Showing ${visibleCount} of ${total} recent entr${total === 1 ? "y" : "ies"}`;
+}
+
+function setLogsLive(live) {
+  const indicator = byId("logsLiveIndicator");
+  indicator.classList.toggle("is-live", live);
+  indicator.querySelector(".live-text").textContent = live ? "Live" : "Paused";
 }
 
 function startLogsInterval() {
-  if (logsIntervalId) return;
-  logsIntervalId = setInterval(loadLogs, 3000);
+  if (logs.intervalId || document.hidden) return;
+  logs.intervalId = setInterval(loadLogs, LOGS_POLL_MS);
+  setLogsLive(true);
 }
 
 function stopLogsInterval() {
-  if (logsIntervalId) {
-    clearInterval(logsIntervalId);
-    logsIntervalId = null;
+  if (logs.intervalId) {
+    clearInterval(logs.intervalId);
+    logs.intervalId = null;
   }
+  setLogsLive(false);
 }
 
-// Bind log viewer controls
-byId("refreshLogsButton")?.addEventListener("click", loadLogs);
-byId("logSearchInput")?.addEventListener("input", (e) => {
-  currentLogSearchQuery = e.target.value;
-  loadLogs();
-});
-byId("clearLogsBtn")?.addEventListener("click", () => {
-  clearedLogsCount = lastLogsLength;
-  loadLogs();
-});
-document.querySelectorAll(".log-level-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".log-level-btn").forEach(b => {
-      b.classList.remove("active");
-      b.style.backgroundColor = "var(--input)";
-      b.style.color = "var(--text)";
-    });
-    btn.classList.add("active");
-    btn.style.backgroundColor = "var(--accent)";
-    btn.style.color = "white";
-    currentLogLevelFilter = btn.dataset.level;
-    loadLogs();
-  });
-});
+// ---------------------------------------------------------------------------
+// Provider icons & fields
+// ---------------------------------------------------------------------------
 
 let currentProviderId = null;
+let modalReturnFocus = null;
+let backdropPointerDown = false;
 
 function getProviderIcon(providerId, displayName) {
   const iconsData = {
+  "anthropic_api": {
+    "path": "M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z",
+    "color": "#D97757",
+    "bg": "rgba(217, 119, 87, 0.15)"
+  },
+  "openai_api": {
+    "path": "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z",
+    "color": "#FFFFFF",
+    "bg": "rgba(255, 255, 255, 0.15)"
+  },
   "nvidia_nim": {
     "path": "M8.948 8.798v-1.43a6.7 6.7 0 0 1 .424-.018c3.922-.124 6.493 3.374 6.493 3.374s-2.774 3.851-5.75 3.851c-.398 0-.787-.062-1.158-.185v-4.346c1.528.185 1.837.857 2.747 2.385l2.04-1.714s-1.492-1.952-4-1.952a6.016 6.016 0 0 0-.796.035m0-4.735v2.138l.424-.027c5.45-.185 9.01 4.47 9.01 4.47s-4.08 4.964-8.33 4.964c-.37 0-.733-.035-1.095-.097v1.325c.3.035.61.062.91.062 3.957 0 6.82-2.023 9.593-4.408.459.371 2.34 1.263 2.73 1.652-2.633 2.208-8.772 3.984-12.253 3.984-.335 0-.653-.018-.971-.053v1.864H24V4.063zm0 10.326v1.131c-3.657-.654-4.673-4.46-4.673-4.46s1.758-1.944 4.673-2.262v1.237H8.94c-1.528-.186-2.73 1.245-2.73 1.245s.68 2.412 2.739 3.11M2.456 10.9s2.164-3.197 6.5-3.533V6.201C4.153 6.59 0 10.653 0 10.653s2.35 6.802 8.948 7.42v-1.237c-4.84-.6-6.492-5.936-6.492-5.936z",
     "color": "#76B900",
@@ -1113,224 +1368,447 @@ function getProviderIcon(providerId, displayName) {
     "bg": "rgba(4, 103, 223, 0.15)"
   }
 };
-  const p = iconsData[providerId];
-  if (p) {
-    const isLight = document.documentElement.getAttribute("data-theme") === "light";
-    let color = p.color;
-    let bg = p.bg;
-    if (color === "#FFFFFF") {
-      color = isLight ? "#0f172a" : "#FFFFFF";
-      bg = isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(255, 255, 255, 0.15)";
-    } else if (p.stroke && isLight && color === "#00F0FF") {
-      color = "#0284c7";
-      bg = "rgba(2, 132, 199, 0.12)";
-    }
-    const border = isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)";
-    const svgInner = p.stroke 
-      ? `<path d="${p.path}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` 
-      : `<path d="${p.path}" fill="${color}"/>`;
-    return `<div class="provider-avatar" style="background: ${bg}; width: 38px; height: 38px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: ${border};"><svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${svgInner}</svg></div>`;
+  const icon = iconsData[providerId];
+  const avatar = document.createElement("div");
+  avatar.className = "provider-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+
+  if (!icon) {
+    avatar.classList.add("is-initials");
+    avatar.textContent = (displayName || providerId)
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map((word) => word[0])
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
+    return avatar;
   }
-  const initials = (displayName || providerId).split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  return `<div class="provider-avatar" style="background: linear-gradient(135deg, var(--accent), var(--accent-dark)); width: 38px; height: 38px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">${initials}</div>`;
+
+  // Colors flow through CSS custom properties so theme switches restyle icons
+  // without re-rendering cards (which used to discard live status updates).
+  if (icon.color.toUpperCase() === "#FFFFFF") {
+    avatar.classList.add("is-mono");
+  } else {
+    avatar.style.setProperty("--brand", icon.color);
+    avatar.style.setProperty("--brand-bg", icon.bg);
+  }
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "20");
+  svg.setAttribute("height", "20");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", icon.path);
+  if (icon.stroke) {
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+  } else {
+    path.setAttribute("fill", "currentColor");
+  }
+  svg.appendChild(path);
+  avatar.appendChild(svg);
+  return avatar;
 }
 
+// Explicit env-key ownership per provider. Providers listed here never fall
+// through to the generic prefix/attribute heuristic below, which could otherwise
+// capture unrelated fields (e.g. "openai" matching other settings attributes, or
+// "anthropic" matching ANTHROPIC_AUTH_TOKEN, the proxy's own server token).
+const PROVIDER_FIELD_MATCHERS = {
+  anthropic_api: (key) => key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_PROXY",
+  openai_api: (key) => key === "OPENAI_API_KEY" || key === "OPENAI_PROXY",
+  nvidia_nim: (key) => key.startsWith("NVIDIA_NIM_"),
+  open_router: (key) => key.startsWith("OPENROUTER_"),
+  gemini: (key) => key.startsWith("GEMINI_"),
+  vertex: (key) => key.startsWith("VERTEX_"),
+  deepseek: (key) => key.startsWith("DEEPSEEK_"),
+  mistral: (key) => key.startsWith("MISTRAL_") && !key.startsWith("MISTRAL_CODESTRAL_"),
+  mistral_codestral: (key) => key.startsWith("CODESTRAL_") || key.startsWith("MISTRAL_CODESTRAL_"),
+  opencode: (key) => key === "OPENCODE_API_KEY" || key.startsWith("OPENCODE_PROXY"),
+  opencode_go: (key) => key === "OPENCODE_API_KEY" || key.startsWith("OPENCODE_GO_PROXY"),
+  vercel: (key) => key.startsWith("AI_GATEWAY_") || key.startsWith("VERCEL_"),
+  bedrock: (key) => key.startsWith("BEDROCK_") || key === "AWS_BEARER_TOKEN_BEDROCK",
+  huggingface: (key) => key.startsWith("HUGGINGFACE_"),
+  cohere: (key) => key.startsWith("COHERE_"),
+  github_models: (key) => key.startsWith("GITHUB_MODELS_"),
+  wafer: (key) => key.startsWith("WAFER_"),
+  kimi: (key) => key.startsWith("KIMI_") && !key.startsWith("KIMI_CODE_"),
+  kimi_code: (key) => key.startsWith("KIMI_CODE_"),
+  minimax: (key) => key.startsWith("MINIMAX_"),
+  cerebras: (key) => key.startsWith("CEREBRAS_"),
+  groq: (key) => key.startsWith("GROQ_"),
+  sambanova: (key) => key.startsWith("SAMBANOVA_"),
+  fireworks: (key) => key.startsWith("FIREWORKS_"),
+  cloudflare: (key) => key.startsWith("CLOUDFLARE_"),
+  zai: (key) => key.startsWith("ZAI_"),
+  ollama_cloud: (key) => key === "OLLAMA_API_KEY" || key.startsWith("OLLAMA_CLOUD_"),
+  tokenrouter: (key) => key.startsWith("TOKENROUTER_"),
+  ollama: (key) => key.startsWith("OLLAMA_") && key !== "OLLAMA_API_KEY",
+  lmstudio: (key) => key.startsWith("LMSTUDIO_") || key.startsWith("LM_STUDIO_"),
+  llamacpp: (key) => key.startsWith("LLAMACPP_") || key.startsWith("LLAMA_CPP_"),
+};
+
 function getProviderFields(providerId) {
-  const cleanId = providerId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const cleanId = providerId.toLowerCase().replace(/[^a-z0-9]/g, "_");
   const screamingId = cleanId.toUpperCase();
-  
-  return Array.from(state.fields.values()).filter(field => {
+  const explicitMatcher = Object.prototype.hasOwnProperty.call(PROVIDER_FIELD_MATCHERS, cleanId)
+    ? PROVIDER_FIELD_MATCHERS[cleanId]
+    : null;
+
+  return Array.from(state.fields.values()).filter((field) => {
+    if (field.section !== "providers") return false;
     const key = field.key.toUpperCase();
+    if (explicitMatcher) {
+      return explicitMatcher(key);
+    }
     const attr = (field.settings_attr || "").toLowerCase();
-    
-    if (cleanId === 'nvidia_nim') {
-      return key.startsWith('NVIDIA_NIM_');
-    }
-    if (cleanId === 'open_router') {
-      return key.startsWith('OPENROUTER_');
-    }
-    if (cleanId === 'gemini') {
-      return key.startsWith('GEMINI_');
-    }
-    if (cleanId === 'vertex') {
-      return key.startsWith('VERTEX_');
-    }
-    if (cleanId === 'deepseek') {
-      return key.startsWith('DEEPSEEK_');
-    }
-    if (cleanId === 'mistral') {
-      return key.startsWith('MISTRAL_') && !key.startsWith('MISTRAL_CODESTRAL_');
-    }
-    if (cleanId === 'mistral_codestral') {
-      return key.startsWith('CODESTRAL_') || key.startsWith('MISTRAL_CODESTRAL_');
-    }
-    if (cleanId === 'opencode') {
-      return key === 'OPENCODE_API_KEY' || key.startsWith('OPENCODE_PROXY');
-    }
-    if (cleanId === 'opencode_go') {
-      return key === 'OPENCODE_API_KEY' || key.startsWith('OPENCODE_GO_PROXY');
-    }
-    if (cleanId === 'vercel') {
-      return key.startsWith('AI_GATEWAY_') || key.startsWith('VERCEL_');
-    }
-    if (cleanId === 'bedrock') {
-      return key.startsWith('BEDROCK_') || key === 'AWS_BEARER_TOKEN_BEDROCK';
-    }
-    if (cleanId === 'huggingface') {
-      return key.startsWith('HUGGINGFACE_');
-    }
-    if (cleanId === 'cohere') {
-      return key.startsWith('COHERE_');
-    }
-    if (cleanId === 'github_models') {
-      return key.startsWith('GITHUB_MODELS_');
-    }
-    if (cleanId === 'wafer') {
-      return key.startsWith('WAFER_');
-    }
-    if (cleanId === 'kimi') {
-      return key.startsWith('KIMI_') && !key.startsWith('KIMI_CODE_');
-    }
-    if (cleanId === 'kimi_code') {
-      return key.startsWith('KIMI_CODE_');
-    }
-    if (cleanId === 'minimax') {
-      return key.startsWith('MINIMAX_');
-    }
-    if (cleanId === 'cerebras') {
-      return key.startsWith('CEREBRAS_');
-    }
-    if (cleanId === 'groq') {
-      return key.startsWith('GROQ_');
-    }
-    if (cleanId === 'sambanova') {
-      return key.startsWith('SAMBANOVA_');
-    }
-    if (cleanId === 'fireworks') {
-      return key.startsWith('FIREWORKS_');
-    }
-    if (cleanId === 'cloudflare') {
-      return key.startsWith('CLOUDFLARE_');
-    }
-    if (cleanId === 'zai') {
-      return key.startsWith('ZAI_');
-    }
-    if (cleanId === 'ollama_cloud') {
-      return key === 'OLLAMA_API_KEY' || key.startsWith('OLLAMA_CLOUD_');
-    }
-    if (cleanId === 'tokenrouter') {
-      return key.startsWith('TOKENROUTER_');
-    }
-    if (cleanId === 'ollama') {
-      return key.startsWith('OLLAMA_') && key !== 'OLLAMA_API_KEY';
-    }
-    if (cleanId === 'lmstudio') {
-      return key.startsWith('LMSTUDIO_') || key.startsWith('LM_STUDIO_');
-    }
-    if (cleanId === 'llamacpp') {
-      return key.startsWith('LLAMACPP_') || key.startsWith('LLAMA_CPP_');
-    }
-    
     return key.startsWith(screamingId) || attr.includes(cleanId);
   });
 }
 
-function openProviderModal(providerId) {
-  currentProviderId = providerId;
-  const provider = state.config.provider_status.find(p => p.provider_id === providerId);
-  if (!provider) return;
+// ---------------------------------------------------------------------------
+// Provider modal
+// ---------------------------------------------------------------------------
 
-  const modal = byId("providerModal");
-  byId("modalProviderTitle").textContent = provider.display_name || providerId;
-  byId("modalProviderIcon").innerHTML = getProviderIcon(providerId, provider.display_name);
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const providerTestsInFlight = new Set();
+
+function findProviderStatus(providerId) {
+  return state.config?.provider_status?.find((p) => p.provider_id === providerId) || null;
+}
+
+function isModalOpen() {
+  return currentProviderId !== null;
+}
+
+function modalContainer() {
+  return document.querySelector("#providerModal .modal-container");
+}
+
+function setModalMessage(message, kind = "") {
+  const area = byId("modalMessage");
+  area.textContent = message;
+  area.className = `modal-message ${kind}`.trim();
+}
+
+function syncModalTestButton() {
+  const button = byId("modalTestBtn");
+  const provider = currentProviderId ? findProviderStatus(currentProviderId) : null;
+  const busy = currentProviderId !== null && providerTestsInFlight.has(currentProviderId);
+  button.disabled = busy;
+  if (busy) {
+    button.setAttribute("aria-busy", "true");
+    button.textContent = "Testing...";
+  } else {
+    button.removeAttribute("aria-busy");
+    button.textContent = provider?.kind === "local" ? "Test" : "Refresh models";
+  }
+}
+
+function renderModalMeta(providerId, provider) {
+  const meta = byId("modalProviderMeta");
+  meta.replaceChildren();
+  const card = findProviderCard(providerId);
+  const pill = card?.querySelector(".status-pill");
+  if (pill?.textContent) {
+    meta.appendChild(pill.cloneNode(true));
+  }
+  const kindTag = document.createElement("span");
+  kindTag.className = "kind-tag";
+  kindTag.textContent = provider.kind === "local" ? "Local" : "Cloud";
+  meta.appendChild(kindTag);
+}
+
+function setModalAdvanced(showing) {
+  const fieldsContainer = byId("modalProviderFields");
+  const toggle = byId("modalAdvancedToggle");
+  fieldsContainer.classList.toggle("show-advanced", showing);
+  toggle.textContent = showing ? "Hide advanced" : "Show advanced";
+  toggle.setAttribute("aria-expanded", String(showing));
+}
+
+function openProviderModal(providerId, returnFocusTo = null) {
+  const provider = findProviderStatus(providerId);
+  if (!provider) return;
+  if (isModalOpen()) {
+    closeProviderModal({ restoreFocus: false });
+  }
+
+  currentProviderId = providerId;
+  modalReturnFocus = returnFocusTo || document.activeElement;
+  const name = provider.display_name || providerId;
+
+  byId("modalProviderTitle").textContent = name;
+  byId("modalProviderIcon").replaceChildren(getProviderIcon(providerId, provider.display_name));
+  renderModalMeta(providerId, provider);
 
   const pFields = getProviderFields(providerId);
-  const credField = pFields.find(f => f.key.includes("API_KEY") || f.key.includes("TOKEN") || f.key.includes("SECRET") || f.key.includes("PROJECT_ID"));
-  const desc = credField ? credField.description : `Configure settings and endpoints for ${provider.display_name}.`;
-  byId("modalProviderDesc").innerHTML = desc || `Configure settings and endpoints for ${provider.display_name}.`;
+  const credField = pFields.find(
+    (f) =>
+      f.key.includes("API_KEY") ||
+      f.key.includes("TOKEN") ||
+      f.key.includes("SECRET") ||
+      f.key.includes("PROJECT_ID"),
+  );
+  renderRichText(
+    byId("modalProviderDesc"),
+    credField?.description || `Configure settings and endpoints for ${name}.`,
+  );
 
   const fieldsContainer = byId("modalProviderFields");
-  fieldsContainer.innerHTML = "";
-  
-  pFields.forEach(field => {
-    const fieldEl = document.querySelector(`#hiddenFieldsContainer .field[data-key="${field.key}"]`);
+  fieldsContainer.replaceChildren();
+  pFields.forEach((field) => {
+    const fieldEl = document.querySelector(
+      `#hiddenFieldsContainer .field[data-key="${CSS.escape(field.key)}"]`,
+    );
     if (fieldEl) {
       fieldsContainer.appendChild(fieldEl);
     }
   });
 
-  const testBtn = byId("modalTestBtn");
-  testBtn.textContent = "Test Provider";
-  const newTestBtn = testBtn.cloneNode(true);
-  testBtn.parentNode.replaceChild(newTestBtn, testBtn);
-  newTestBtn.addEventListener("click", () => {
-    testProviderInModal(providerId, newTestBtn);
-  });
+  const advancedToggle = byId("modalAdvancedToggle");
+  advancedToggle.hidden = !fieldsContainer.querySelector(".advanced-field");
+  setModalAdvanced(false);
+  setModalMessage(
+    fieldsContainer.children.length ? "" : `${name} has no editable settings here.`,
+  );
+  syncModalTestButton();
 
-  modal.classList.add("active");
+  byId("providerModal").classList.add("active");
+  document.querySelector(".app-shell").inert = true;
+  document.body.classList.add("modal-open");
+
+  const firstInput = fieldsContainer.querySelector(
+    "input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+  );
+  (firstInput || byId("closeModalBtn")).focus({ preventScroll: true });
 }
 
-function closeProviderModal() {
+function closeProviderModal({ restoreFocus = true } = {}) {
+  if (!isModalOpen()) return;
   const fieldsContainer = byId("modalProviderFields");
   const hiddenContainer = byId("hiddenFieldsContainer");
-  
-  const fields = Array.from(fieldsContainer.children);
-  fields.forEach(fieldEl => {
+
+  state.modelComboboxes.forEach((combobox) => combobox.close());
+  Array.from(fieldsContainer.children).forEach((fieldEl) => {
     hiddenContainer.appendChild(fieldEl);
   });
 
   byId("providerModal").classList.remove("active");
+  document.querySelector(".app-shell").inert = false;
+  document.body.classList.remove("modal-open");
   currentProviderId = null;
+  setModalMessage("");
+
+  const returnTo = modalReturnFocus;
+  modalReturnFocus = null;
+  if (restoreFocus && returnTo?.isConnected) {
+    returnTo.focus({ preventScroll: true });
+  }
 }
 
-async function testProviderInModal(providerId, button) {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = "Testing...";
+function trapModalFocus(event) {
+  const container = modalContainer();
+  const focusables = Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.getClientRects().length > 0,
+  );
+  if (focusables.length === 0) {
+    event.preventDefault();
+    container.focus();
+    return;
+  }
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !container.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || !container.contains(active))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+async function testProviderInModal(providerId) {
+  const name = providerDisplayName(providerId);
+  providerTestsInFlight.add(providerId);
+  syncModalTestButton();
+  setModalMessage("");
+  let message = "";
+  let kind = "";
   try {
-    const result = await api(`/admin/api/providers/${providerId}/test`, {
+    const result = await api(`/admin/api/providers/${encodeURIComponent(providerId)}/test`, {
       method: "POST",
       body: "{}",
     });
     if (result.ok) {
+      const models = result.models || [];
       updateProviderCard(
         providerId,
         "reachable",
-        `${result.models.length} models`,
-        result.models.slice(0, 3).join(", ") || "No models returned",
+        `${models.length} models`,
+        models.slice(0, 3).join(", ") || "No models returned",
       );
-      showMessage(`Success: Connected to ${providerId}. Found ${result.models.length} models.`, "ok");
-      await loadModels();
+      message = `Success: Connected to ${name}. Found ${models.length} models.`;
+      kind = "ok";
+      await loadModelOptions(true);
     } else {
       updateProviderCard(providerId, "offline", result.error_type, result.error_type);
-      showMessage(`Connection failed: ${result.error_type}`, "error");
+      message = `Connection failed: ${result.error_type || "unknown error"}`;
+      kind = "error";
     }
   } catch (err) {
-    showMessage(`Error: ${err.message}`, "error");
+    message = `Error: ${err.message}`;
+    kind = "error";
   } finally {
-    button.disabled = false;
-    button.textContent = original;
+    providerTestsInFlight.delete(providerId);
+  }
+
+  showMessage(message, kind);
+  // The user may have closed the modal or opened another provider meanwhile.
+  if (currentProviderId === providerId) {
+    setModalMessage(message, kind);
+    renderModalMeta(providerId, findProviderStatus(providerId));
+    syncModalTestButton();
   }
 }
 
-// Bind modal controls
-byId("closeModalBtn")?.addEventListener("click", closeProviderModal);
-byId("modalCancelBtn")?.addEventListener("click", closeProviderModal);
-byId("modalSaveBtn")?.addEventListener("click", async () => {
-  closeProviderModal();
-  await apply();
-});
-byId("providerModal")?.addEventListener("click", (e) => {
-  if (e.target === byId("providerModal")) {
+async function saveProviderModal() {
+  if (state.busy || state.restarting) return;
+  await runAction(async () => {
+    try {
+      const check = await validate(false);
+      if (!check.valid) {
+        setModalMessage(validationErrorText(check), "error");
+        return;
+      }
+    } catch (error) {
+      setModalMessage(`Could not validate: ${error.message}`, "error");
+      return;
+    }
+    // Fields must return to the hidden container before apply() reloads and
+    // re-renders them; otherwise stale nodes would be duplicated on close.
     closeProviderModal();
+    await apply();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Event bindings
+// ---------------------------------------------------------------------------
+
+byId("validateButton").addEventListener("click", () => runAction(() => validate(true)));
+byId("applyButton").addEventListener("click", () => runAction(apply));
+
+document.addEventListener("pointerdown", (event) => {
+  state.modelComboboxes.forEach((combobox) => {
+    if (combobox.isOpen && !combobox.element.contains(event.target)) combobox.close();
+  });
+});
+
+byId("providerSearch").addEventListener("input", (event) => {
+  state.providerFilter.query = event.target.value;
+  applyProviderFilter();
+});
+byId("providerConfiguredOnly").addEventListener("change", (event) => {
+  state.providerFilter.configuredOnly = event.target.checked;
+  applyProviderFilter();
+});
+
+byId("refreshLogsButton").addEventListener("click", () => loadLogs());
+byId("logSearchInput").addEventListener("input", (event) => {
+  logs.query = event.target.value;
+  renderLogs();
+});
+byId("clearLogsBtn").addEventListener("click", () => {
+  const last = logs.entries[logs.entries.length - 1];
+  logs.clearMarker = last === undefined ? null : logEntryKey(last);
+  renderLogs();
+});
+byId("autoScrollLogs").addEventListener("change", (event) => {
+  if (event.target.checked) {
+    const container = byId("logsContainer");
+    container.scrollTop = container.scrollHeight;
   }
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && byId("providerModal") && byId("providerModal").classList.contains("active")) {
-    closeProviderModal();
+document.querySelectorAll(".log-level-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".log-level-btn").forEach((other) => {
+      const selected = other === btn;
+      other.classList.toggle("active", selected);
+      other.setAttribute("aria-pressed", String(selected));
+    });
+    logs.levelFilter = btn.dataset.level;
+    renderLogs();
+  });
+});
+
+// Pause log polling while the tab is hidden; resume when it becomes visible.
+document.addEventListener("visibilitychange", () => {
+  if (state.activeView !== "logs") return;
+  if (document.hidden) {
+    stopLogsInterval();
+  } else {
+    loadLogs();
+    startLogsInterval();
   }
 });
 
+byId("modalTestBtn").addEventListener("click", () => {
+  if (currentProviderId !== null) testProviderInModal(currentProviderId);
+});
+byId("closeModalBtn").addEventListener("click", () => closeProviderModal());
+byId("modalCancelBtn").addEventListener("click", () => closeProviderModal());
+byId("modalSaveBtn").addEventListener("click", saveProviderModal);
+byId("modalAdvancedToggle").addEventListener("click", () => {
+  setModalAdvanced(!byId("modalProviderFields").classList.contains("show-advanced"));
+});
+
+// Only close on a click that both starts and ends on the backdrop, so a text
+// selection drag that ends outside the dialog does not discard the modal.
+byId("providerModal").addEventListener("pointerdown", (event) => {
+  backdropPointerDown = event.target === event.currentTarget;
+});
+byId("providerModal").addEventListener("click", (event) => {
+  if (backdropPointerDown && event.target === event.currentTarget) {
+    closeProviderModal();
+  }
+  backdropPointerDown = false;
+});
+
+document.addEventListener("keydown", (event) => {
+  if (isModalOpen()) {
+    // Comboboxes call preventDefault() when Escape closes their listbox.
+    if (event.key === "Escape" && !event.defaultPrevented) {
+      event.preventDefault();
+      closeProviderModal();
+    } else if (event.key === "Tab") {
+      trapModalFocus(event);
+    }
+    return;
+  }
+
+  if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (event.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    const searchId =
+      state.activeView === "providers"
+        ? "providerSearch"
+        : state.activeView === "logs"
+          ? "logSearchInput"
+          : null;
+    if (searchId) {
+      event.preventDefault();
+      byId(searchId).focus();
+    }
+  }
+});
+
+initTheme();
 load().catch((error) => {
   showMessage(error.message, "error");
 });
