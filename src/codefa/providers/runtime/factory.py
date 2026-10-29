@@ -33,6 +33,26 @@ def _create_nvidia_nim(
     )
 
 
+def _create_anthropic(
+    config: ProviderConfig,
+    _settings: Settings,
+    admission: ProviderAdmissionController,
+) -> BaseProvider:
+    from codefa.providers.anthropic import AnthropicProvider
+
+    return AnthropicProvider(config, admission=admission)
+
+
+def _create_openai(
+    config: ProviderConfig,
+    _settings: Settings,
+    admission: ProviderAdmissionController,
+) -> BaseProvider:
+    from codefa.providers.openai_platform import OpenAIProvider
+
+    return OpenAIProvider(config, admission=admission)
+
+
 def _create_open_router(
     config: ProviderConfig,
     _settings: Settings,
@@ -124,6 +144,8 @@ def _create_github_models(
 
 _SPECIAL_PROVIDER_FACTORIES: dict[str, ProviderFactory] = {
     "nvidia_nim": _create_nvidia_nim,
+    "anthropic_api": _create_anthropic,
+    "openai_api": _create_openai,
     "open_router": _create_open_router,
     "mistral": _create_mistral,
     "deepseek": _create_deepseek,

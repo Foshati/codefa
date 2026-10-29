@@ -3,6 +3,7 @@ from pathlib import Path
 
 from codefa.config.provider_catalog import PROVIDER_CATALOG
 from codefa.messaging.platforms.factory import create_messaging_components
+from codefa.providers.anthropic import AnthropicProvider
 from codefa.providers.base import BaseProvider
 from codefa.providers.cloudflare import CloudflareProvider
 from codefa.providers.deepseek import DeepSeekProvider
@@ -16,6 +17,7 @@ from codefa.providers.openai_chat import (
     OPENAI_CHAT_PROFILES,
     OpenAIChatProvider,
 )
+from codefa.providers.openai_platform import OpenAIProvider
 from codefa.providers.vertex import VertexProvider
 from smoke.features import FEATURE_INVENTORY, README_FEATURES, feature_ids
 
@@ -92,6 +94,8 @@ def test_product_coverage_is_not_satisfied_by_prereq_probes() -> None:
 def test_provider_and_platform_registries_include_advertised_builtins() -> None:
     specialized_provider_classes = {
         "nvidia_nim": NvidiaNimProvider,
+        "anthropic_api": AnthropicProvider,
+        "openai_api": OpenAIProvider,
         "open_router": OpenRouterProvider,
         "mistral": MistralProvider,
         "deepseek": DeepSeekProvider,

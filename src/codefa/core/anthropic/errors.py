@@ -31,6 +31,34 @@ _FAILURE_ERROR_TYPES = {
 }
 
 
+_ERROR_TYPE_FAILURE_KINDS = {
+    "invalid_request_error": FailureKind.INVALID_REQUEST,
+    "authentication_error": FailureKind.AUTHENTICATION,
+    "billing_error": FailureKind.PERMISSION,
+    "permission_error": FailureKind.PERMISSION,
+    "not_found_error": FailureKind.INVALID_REQUEST,
+    "request_too_large": FailureKind.INVALID_REQUEST,
+    "rate_limit_error": FailureKind.RATE_LIMIT,
+    "api_error": FailureKind.UPSTREAM,
+    "timeout_error": FailureKind.TIMEOUT,
+    "overloaded_error": FailureKind.OVERLOADED,
+}
+
+
+def failure_kind_for_anthropic_error_type(
+    error_type: str,
+) -> tuple[FailureKind, int] | None:
+    """Map an upstream Anthropic ``error.type`` to neutral kind and HTTP status.
+
+    This is the inverse of :func:`anthropic_error_type_for_failure`, used by
+    providers whose upstream already speaks the Anthropic wire protocol.
+    """
+    kind = _ERROR_TYPE_FAILURE_KINDS.get(error_type)
+    if kind is None:
+        return None
+    return kind, _ANTHROPIC_ERROR_STATUS_CODES[error_type]
+
+
 def anthropic_error_type_for_failure(
     failure: FailureKind | ExecutionFailure,
 ) -> str:

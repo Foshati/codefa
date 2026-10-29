@@ -272,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "codefa"
-version = "1.2.52"
+version = "1.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

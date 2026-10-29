@@ -82,8 +82,12 @@ You can also bypass the menu and launch directly:
 codefa claude   # Direct launcher for Claude Code
 codefa codex    # Direct launcher for Codex CLI
 codefa server   # Start server & open Admin UI
+codefa status   # Show whether the background server is running
+codefa stop     # Stop the auto-started background server
 codefa-init     # Initialize ~/.codefa/.env config
 ```
+
+`codefa claude` / `codefa codex` start one shared server in the background, detached from the terminal, if none is running. It keeps running when the client exits, so several terminals can use it at once; stop it with `codefa stop`. If startup fails, the real error is printed, and the full output is kept in `~/.codefa/logs/server-console.log`.
 
 ---
 
@@ -92,6 +96,8 @@ codefa-init     # Initialize ~/.codefa/.env config
 | Provider | Description | Example Model |
 | --- | --- | --- |
 | [NVIDIA NIM](https://build.nvidia.com) | Accelerated NIM microservices | `nvidia_nim/meta/llama-3.3-70b-instruct` |
+| [Anthropic](https://console.anthropic.com) | Native Claude Messages API (no conversion: thinking, caching, server tools) | `anthropic_api/claude-sonnet-4-5` |
+| [OpenAI](https://platform.openai.com) | OpenAI GPT models (Chat Completions) | `openai_api/gpt-5` |
 | [OpenRouter](https://openrouter.ai) | Unified multi-provider gateway | `open_router/auto` |
 | [Gemini](https://ai.google.dev) | Google Gemini API | `gemini/gemini-2.5-flash` |
 | [Vertex AI](https://cloud.google.com/vertex-ai) | Google Cloud Vertex AI | `vertex/gemini-2.5-flash` |
@@ -120,6 +126,13 @@ codefa-init     # Initialize ~/.codefa/.env config
 | [LM Studio](https://lmstudio.ai) | Local LM Studio server | `lmstudio/local-model` |
 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | Local llama.cpp server | `llamacpp/local-model` |
 | [Ollama](https://ollama.com) | Local Ollama instance | `ollama/llama3.3:latest` |
+
+### First-party Claude and GPT
+
+- **Anthropic** (`anthropic_api/...`, key `ANTHROPIC_API_KEY`): requests are forwarded natively to the Claude Messages API, with no conversion. Thinking signatures, prompt caching, `anthropic-beta` features, exact token usage, and Anthropic's own `web_search`/`web_fetch` server tools work just as they do when calling Anthropic directly. Requests the API rejects (thinking type, effort, beta flags) are corrected and retried automatically.
+- **OpenAI** (`openai_api/...`, key `OPENAI_API_KEY`): GPT models over Chat Completions with named reasoning effort. Parameters a specific model rejects (for example `reasoning_effort` or `temperature`) are detected from the API error and dropped automatically, and non-chat models are hidden from model pickers.
+
+Both support a per-provider HTTP proxy (`ANTHROPIC_PROXY`, `OPENAI_PROXY`) for regions where the APIs are not directly reachable.
 
 ---
 

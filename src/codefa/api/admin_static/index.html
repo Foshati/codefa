@@ -3,36 +3,59 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
     <title>codefa Admin</title>
     <link rel="icon" href="/admin/assets/codefa.svg" />
     <link rel="stylesheet" href="/admin/assets/admin.css" />
   </head>
   <body>
+    <a class="skip-link" href="#mainContent">Skip to content</a>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">
-            <img src="/admin/assets/codefa.svg" alt="codefa" class="brand-logo-img" />
+            <img src="/admin/assets/codefa.svg" alt="" class="brand-logo-img" />
           </div>
-          <h1 class="brand-title">codefa</h1>
+          <div class="brand-text">
+            <h1 class="brand-title">codefa</h1>
+            <span class="brand-subtitle">Proxy admin</span>
+          </div>
         </div>
         <nav id="sectionNav" class="section-nav" aria-label="Admin views"></nav>
       </aside>
 
-      <main class="main">
+      <main id="mainContent" class="main" tabindex="-1">
         <header class="topbar">
-          <div>
-            <h2 id="pageTitle">Providers</h2>
-          </div>
+          <h2 id="pageTitle">Providers</h2>
+          <p id="pageSubtitle" class="page-subtitle"></p>
         </header>
 
         <div id="adminViews" class="admin-views">
           <section id="view-providers" class="admin-view active" data-view="providers">
-            <section class="provider-strip" aria-label="Provider status">
+            <section class="provider-strip" aria-labelledby="providerStripTitle">
               <div class="strip-header">
-                <h3>Providers</h3>
+                <div>
+                  <h3 id="providerStripTitle">Providers</h3>
+                  <p id="providerSummary" class="panel-subtitle" aria-live="polite"></p>
+                </div>
+                <div class="provider-toolbar">
+                  <div class="search-field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <label for="providerSearch" class="visually-hidden">Search providers</label>
+                    <input type="search" id="providerSearch" placeholder="Search providers" autocomplete="off" spellcheck="false" />
+                    <kbd aria-hidden="true">/</kbd>
+                  </div>
+                  <label class="toggle-label">
+                    <input type="checkbox" id="providerConfiguredOnly" class="toggle" />
+                    Configured only
+                  </label>
+                </div>
               </div>
-              <div id="providerGrid" class="provider-grid"></div>
+              <div id="providerGrid" class="provider-groups"></div>
+              <div id="providerEmpty" class="empty-state" hidden>
+                <strong>No providers match</strong>
+                <span>Try a different search or turn off “Configured only”.</span>
+              </div>
             </section>
             <div
               id="providersSections"
@@ -59,77 +82,103 @@
 
           <section id="view-logs" class="admin-view" data-view="logs" hidden>
             <div id="logsSections" class="form-sections" aria-label="Server Logs">
-              <div class="section-card" style="display: flex; flex-direction: column; gap: 16px;">
-                <div class="section-header logs-header">
+              <div class="panel logs-panel">
+                <div class="panel-header logs-header">
                   <div>
-                    <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-strong);">Server Logs</h3>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);">Live logs from the background server process</p>
+                    <h3>Server Logs</h3>
+                    <p class="panel-subtitle">Live logs from the background server process</p>
                   </div>
                   <div class="logs-controls">
-                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; user-select: none;">
-                      <input type="checkbox" id="autoScrollLogs" checked style="accent-color: var(--accent);" /> Auto-scroll
+                    <span id="logsLiveIndicator" class="live-indicator" aria-hidden="true">
+                      <span class="live-dot"></span><span class="live-text">Paused</span>
+                    </span>
+                    <label class="toggle-label">
+                      <input type="checkbox" id="autoScrollLogs" class="toggle" checked />
+                      Auto-scroll
                     </label>
-                    <button id="refreshLogsButton" class="secondary-button" type="button" style="margin: 0; padding: 6px 14px; font-size: 13px; height: 32px; display: inline-flex; align-items: center;">Refresh Logs</button>
+                    <button id="refreshLogsButton" class="secondary-button button-sm" type="button">Refresh Logs</button>
                   </div>
                 </div>
 
                 <div class="log-toolbar">
-                  <input type="text" id="logSearchInput" placeholder="Search logs (e.g. endpoint, method, message)..." />
-                  <div class="log-level-group">
-                    <button type="button" class="log-level-btn active" data-level="ALL">ALL</button>
-                    <button type="button" class="log-level-btn" data-level="INFO">INFO</button>
-                    <button type="button" class="log-level-btn" data-level="SUCCESS">SUCCESS</button>
-                    <button type="button" class="log-level-btn" data-level="WARNING">WARNING</button>
-                    <button type="button" class="log-level-btn" data-level="ERROR">ERROR</button>
+                  <div class="search-field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <label for="logSearchInput" class="visually-hidden">Search logs</label>
+                    <input type="search" id="logSearchInput" placeholder="Search logs (e.g. endpoint, method, message)..." autocomplete="off" spellcheck="false" />
                   </div>
-                  <button type="button" id="clearLogsBtn" class="clear-logs-btn">Clear View</button>
+                  <div class="log-level-group segmented" role="group" aria-label="Filter by log level">
+                    <button type="button" class="log-level-btn active" data-level="ALL" aria-pressed="true">ALL</button>
+                    <button type="button" class="log-level-btn" data-level="INFO" aria-pressed="false">INFO</button>
+                    <button type="button" class="log-level-btn" data-level="SUCCESS" aria-pressed="false">SUCCESS</button>
+                    <button type="button" class="log-level-btn" data-level="WARNING" aria-pressed="false">WARNING</button>
+                    <button type="button" class="log-level-btn" data-level="ERROR" aria-pressed="false">ERROR</button>
+                  </div>
+                  <button type="button" id="clearLogsBtn" class="ghost-button button-sm clear-logs-btn">Clear View</button>
                 </div>
 
-                <div class="logs-container" id="logsContainer">
-                  <span style="color: var(--muted);">Loading logs...</span>
+                <div class="logs-container" id="logsContainer" role="log" aria-label="Server log output" tabindex="0">
+                  <div class="logs-notice">Loading logs...</div>
                 </div>
+                <div id="logsFooter" class="logs-footer" aria-live="polite"></div>
               </div>
             </div>
           </section>
 
           <section id="view-settings" class="admin-view" data-view="settings" hidden>
             <div id="settingsSections" class="form-sections" aria-label="Settings configuration">
-              <div class="section-card">
-                <div class="section-header" style="border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px;">
-                  <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-strong);">Appearance & Theme</h3>
-                  <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);">Switch between Dark, Light, or System theme preferences</p>
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h3 id="themeHeading">Appearance &amp; Theme</h3>
+                    <p class="panel-subtitle">Switch between Dark, Light, or System theme preferences</p>
+                  </div>
                 </div>
-                
-                <div class="theme-options-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
-                  <div class="theme-card" data-theme-mode="dark">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--text-strong);">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg> Dark Mode
-                      </div>
-                      <span class="theme-check" style="color: var(--accent); opacity: 0;">✓</span>
-                    </div>
-                    <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">Sleek dark theme optimized for low-light coding environments.</p>
-                  </div>
 
-                  <div class="theme-card" data-theme-mode="light">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--text-strong);">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg> Light Mode
-                      </div>
-                      <span class="theme-check" style="color: var(--accent); opacity: 0;">✓</span>
-                    </div>
-                    <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">Bright, high-contrast theme for daylight working hours.</p>
-                  </div>
+                <div class="theme-options-grid" role="group" aria-labelledby="themeHeading">
+                  <button type="button" class="theme-card" data-theme-mode="dark" aria-pressed="false">
+                    <span class="theme-preview is-dark" aria-hidden="true">
+                      <span class="theme-preview-pane theme-preview-side"><span></span><span></span><span></span></span>
+                      <span class="theme-preview-pane theme-preview-main"><span></span><span></span><span></span></span>
+                    </span>
+                    <span class="theme-card-head">
+                      <span class="theme-card-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                        Dark Mode
+                      </span>
+                      <span class="theme-check" aria-hidden="true">✓</span>
+                    </span>
+                    <span class="theme-card-desc">Sleek dark theme optimized for low-light coding environments.</span>
+                  </button>
 
-                  <div class="theme-card" data-theme-mode="system">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--text-strong);">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg> System Default
-                      </div>
-                      <span class="theme-check" style="color: var(--accent); opacity: 0;">✓</span>
-                    </div>
-                    <p style="margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4;">Automatically syncs with your operating system preference.</p>
-                  </div>
+                  <button type="button" class="theme-card" data-theme-mode="light" aria-pressed="false">
+                    <span class="theme-preview is-light" aria-hidden="true">
+                      <span class="theme-preview-pane theme-preview-side"><span></span><span></span><span></span></span>
+                      <span class="theme-preview-pane theme-preview-main"><span></span><span></span><span></span></span>
+                    </span>
+                    <span class="theme-card-head">
+                      <span class="theme-card-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                        Light Mode
+                      </span>
+                      <span class="theme-check" aria-hidden="true">✓</span>
+                    </span>
+                    <span class="theme-card-desc">Bright, high-contrast theme for daylight working hours.</span>
+                  </button>
+
+                  <button type="button" class="theme-card" data-theme-mode="system" aria-pressed="false">
+                    <span class="theme-preview is-system" aria-hidden="true">
+                      <span class="theme-preview-pane theme-preview-half-dark"><span></span><span></span><span></span></span>
+                      <span class="theme-preview-pane theme-preview-half-light"><span></span><span></span><span></span></span>
+                    </span>
+                    <span class="theme-card-head">
+                      <span class="theme-card-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                        System Default
+                      </span>
+                      <span class="theme-check" aria-hidden="true">✓</span>
+                    </span>
+                    <span class="theme-card-desc">Automatically syncs with your operating system preference.</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -142,7 +191,7 @@
           <strong id="dirtyState">No changes</strong>
           <span id="configPath"></span>
         </div>
-        <div id="messageArea" class="message-area"></div>
+        <div id="messageArea" class="message-area" role="status" aria-live="polite"></div>
         <div class="action-buttons">
           <button id="validateButton" class="secondary-button" type="button">Validate</button>
           <button id="applyButton" class="primary-button" type="button" disabled>Apply</button>
@@ -150,32 +199,42 @@
       </footer>
     </div>
 
-    <!-- Hidden container for provider settings fields (temporarily moved to modal when active) -->
-    <div id="hiddenFieldsContainer" style="display: none;"></div>
+    <!-- Provider settings fields live here and are moved into the modal while it is open. -->
+    <div id="hiddenFieldsContainer" hidden></div>
 
-
-
-    <!-- Provider Configuration Modal Backdrop -->
+    <!-- Provider Configuration Modal -->
     <div id="providerModal" class="modal-backdrop">
-      <div class="modal-container">
+      <div
+        class="modal-container"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modalProviderTitle"
+        aria-describedby="modalProviderDesc"
+        tabindex="-1"
+      >
         <header class="modal-head">
           <div class="modal-head-title">
             <div id="modalProviderIcon"></div>
-            <h3 id="modalProviderTitle">Provider Settings</h3>
+            <div>
+              <h3 id="modalProviderTitle">Provider Settings</h3>
+              <div id="modalProviderMeta" class="modal-head-meta"></div>
+            </div>
           </div>
           <button type="button" id="closeModalBtn" class="modal-close-icon" aria-label="Close settings">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </header>
         <div class="modal-content-body">
-          <p id="modalProviderDesc" style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; background: var(--panel-strong); border-radius: var(--radius-md); padding: 12px 16px; border-left: 3px solid var(--accent); margin-bottom: 8px;"></p>
-          <div id="modalProviderFields" style="display: flex; flex-direction: column; gap: 16px;"></div>
+          <p id="modalProviderDesc" class="modal-description"></p>
+          <div id="modalProviderFields" class="modal-fields"></div>
+          <button type="button" id="modalAdvancedToggle" class="ghost-button button-sm advanced-toggle" aria-expanded="false" aria-controls="modalProviderFields" hidden>Show advanced</button>
+          <div id="modalMessage" class="modal-message" role="status" aria-live="polite"></div>
         </div>
         <footer class="modal-foot">
-          <button type="button" id="modalTestBtn" class="secondary-button" style="margin: 0; height: 36px; padding: 0 16px;">Test Connection</button>
-          <div style="display: flex; gap: 10px;">
-            <button type="button" id="modalCancelBtn" class="secondary-button" style="margin: 0; height: 36px; padding: 0 16px;">Cancel</button>
-            <button type="button" id="modalSaveBtn" class="primary-button" style="margin: 0; height: 36px; padding: 0 20px; font-weight: 600;">Enable & Apply</button>
+          <button type="button" id="modalTestBtn" class="secondary-button">Test Provider</button>
+          <div class="modal-foot-actions">
+            <button type="button" id="modalCancelBtn" class="secondary-button">Cancel</button>
+            <button type="button" id="modalSaveBtn" class="primary-button">Enable &amp; Apply</button>
           </div>
         </footer>
       </div>

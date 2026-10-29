@@ -6,6 +6,24 @@ from codefa.config.provider_catalog import PROVIDER_CATALOG
 from codefa.config.settings import Settings
 
 _PROVIDER_FIELD_OVERRIDES: dict[str, dict[str, Any]] = {
+    "ANTHROPIC_API_KEY": {
+        "label": "Anthropic API Key",
+        "description": (
+            "Anthropic Console API key ([console.anthropic.com/settings/keys]"
+            "(https://console.anthropic.com/settings/keys)). Requests are forwarded "
+            "natively to the Claude Messages API, so thinking, prompt caching, "
+            "server tools, and exact usage work as with Anthropic directly."
+        ),
+    },
+    "OPENAI_API_KEY": {
+        "label": "OpenAI API Key",
+        "description": (
+            "OpenAI Platform API key ([platform.openai.com/api-keys]"
+            "(https://platform.openai.com/api-keys)) for GPT models over Chat "
+            "Completions. Unsupported per-model parameters are detected and "
+            "dropped automatically."
+        ),
+    },
     "NVIDIA_NIM_API_KEY": {
         "label": "NVIDIA NIM API Key",
         "description": "Used by NVIDIA NIM chat and optional NIM voice transcription.",

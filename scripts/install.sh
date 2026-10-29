@@ -67,6 +67,9 @@ prompt_confirm() {
     if [ "$auto_yes" -eq 1 ]; then
         return 0
     fi
+    if [ ! -t 1 ]; then
+        return 0
+    fi
     tty_path=""
     if [ -c /dev/tty ]; then
         tty_path="/dev/tty"

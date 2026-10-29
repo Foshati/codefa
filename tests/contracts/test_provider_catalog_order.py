@@ -7,6 +7,8 @@ from codefa.config.provider_catalog import (
 
 _EXPECTED_PROVIDER_ORDER: tuple[str, ...] = (
     "nvidia_nim",
+    "anthropic_api",
+    "openai_api",
     "open_router",
     "gemini",
     "vertex",

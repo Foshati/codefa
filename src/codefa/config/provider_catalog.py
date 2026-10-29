@@ -8,6 +8,9 @@ from dataclasses import dataclass
 
 # Default upstream base URLs are owned here with the provider catalog.
 NVIDIA_NIM_DEFAULT_BASE = "https://integrate.api.nvidia.com/v1"
+# Anthropic native Messages API root; the provider appends /v1/messages.
+ANTHROPIC_DEFAULT_BASE = "https://api.anthropic.com"
+OPENAI_DEFAULT_BASE = "https://api.openai.com/v1"
 # Moonshot Kimi OpenAI-compatible Chat Completions API.
 KIMI_DEFAULT_BASE = "https://api.moonshot.ai/v1"
 # Kimi Code subscription OpenAI-compatible Chat Completions API.
@@ -63,6 +66,9 @@ class ProviderDescriptor:
     base_url_attr: str | None = None
     proxy_attr: str | None = None
     required_settings_attrs: tuple[str, ...] = ()
+    # The upstream speaks the Anthropic Messages API natively, so requests are
+    # forwarded without protocol conversion (server tools, caching, signatures).
+    native_messages_api: bool = False
 
     def configuration_attrs(self) -> tuple[str, ...]:
         """Return settings fields whose non-empty values configure this provider."""
@@ -84,6 +90,25 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
         credential_attr="nvidia_nim_api_key",
         default_base_url=NVIDIA_NIM_DEFAULT_BASE,
         proxy_attr="nvidia_nim_proxy",
+    ),
+    "anthropic_api": ProviderDescriptor(
+        provider_id="anthropic_api",
+        display_name="Anthropic (Claude)",
+        credential_env="ANTHROPIC_API_KEY",
+        credential_url="https://console.anthropic.com/settings/keys",
+        credential_attr="anthropic_api_key",
+        default_base_url=ANTHROPIC_DEFAULT_BASE,
+        proxy_attr="anthropic_proxy",
+        native_messages_api=True,
+    ),
+    "openai_api": ProviderDescriptor(
+        provider_id="openai_api",
+        display_name="OpenAI (GPT)",
+        credential_env="OPENAI_API_KEY",
+        credential_url="https://platform.openai.com/api-keys",
+        credential_attr="openai_api_key",
+        default_base_url=OPENAI_DEFAULT_BASE,
+        proxy_attr="openai_proxy",
     ),
     "open_router": ProviderDescriptor(
         provider_id="open_router",
@@ -344,7 +369,8 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
 }
 
 # Key order:
-# NVIDIA NIM first (README default), DeepSeek fourth, OpenCode gateways adjacent,
+# NVIDIA NIM first (README default), first-party Anthropic and OpenAI next,
+# OpenCode gateways adjacent,
 # Vercel / Hugging Face / Cohere / GitHub Models follow gateway-style remotes,
 # then cloud gateways, Ollama Cloud, and local providers per project plan
 # (github.com/cheahjs/free-llm-api-resources Free Providers TOC as rough guide

@@ -35,6 +35,7 @@ from codefa.application.errors import ApplicationError, InvalidRequestError
 from codefa.application.execution import ProviderExecutor, TokenCounter
 from codefa.application.ports import ProviderResolver
 from codefa.application.routing import ModelRouter, RoutedMessagesRequest
+from codefa.config.provider_catalog import PROVIDER_CATALOG
 from codefa.config.settings import Settings
 from codefa.core.anthropic import (
     MessagesRequest,
@@ -260,6 +261,8 @@ class MessagesHandler:
         )
 
     def _reject_unsupported_server_tools(self, routed: RoutedMessagesRequest) -> None:
+        if _has_native_messages_upstream(routed):
+            return
         tool_err = unsupported_server_tool_error(
             routed.request,
             web_tools_enabled=self._settings.enable_web_server_tools,
@@ -297,6 +300,8 @@ class MessagesHandler:
         self, routed: RoutedMessagesRequest
     ) -> _MessagesResult | None:
         if not self._settings.enable_web_server_tools:
+            return None
+        if _has_native_messages_upstream(routed):
             return None
         if not is_web_server_tool_request(routed.request):
             return None
@@ -338,6 +343,12 @@ class MessagesHandler:
             model=routed.request.model,
         )
         return _MessagesCompleteResult(optimized)
+
+
+def _has_native_messages_upstream(routed: RoutedMessagesRequest) -> bool:
+    """Return whether the upstream executes Anthropic server tools itself."""
+    descriptor = PROVIDER_CATALOG.get(routed.resolved.provider_id)
+    return descriptor is not None and descriptor.native_messages_api
 
 
 def _stream_error_fields(error: dict[str, object]) -> tuple[str, str]:
